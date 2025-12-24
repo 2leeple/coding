@@ -23,6 +23,9 @@ import {
   List,
   Download,
   ArrowRight,
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 
 type Tab = 'A' | 'B' | 'C';
@@ -804,8 +807,19 @@ export default function Home() {
   const [cGroupSaved, setCGroupSaved] = useState(false);
   const [cGroupRemovingBg, setCGroupRemovingBg] = useState<Set<number>>(new Set());
   const [cGroupFocusedArea, setCGroupFocusedArea] = useState<'product' | 'nutrition' | null>(null);
+  const [cGroupNutritionHighlights, setCGroupNutritionHighlights] = useState<Array<{
+    field: string;
+    coords: Array<{ x: number; y: number }>;
+  }>>([]);
+  const [cGroupNutritionImageMeta, setCGroupNutritionImageMeta] = useState<{ width: number; height: number } | null>(null);
+  const [cGroupFocusedField, setCGroupFocusedField] = useState<string | null>(null);
+  const [nutritionImageLoaded, setNutritionImageLoaded] = useState(false);
+  const [isNutritionImageZoomed, setIsNutritionImageZoomed] = useState(false);
+  const [nutritionImageZoom, setNutritionImageZoom] = useState(1);
+  const [nutritionImageMagnifier, setNutritionImageMagnifier] = useState({ x: 50, y: 50, isHovering: false });
   const cGroupProductFileInputRef = useRef<HTMLInputElement>(null);
   const cGroupNutritionFileInputRef = useRef<HTMLInputElement>(null);
+  const nutritionImageRef = useRef<HTMLImageElement>(null);
   
   // B그룹 (시장조사) - 리스트 스캔 모드 상태
   const [bGroupListImages, setBGroupListImages] = useState<string[]>([]);
@@ -1359,6 +1373,50 @@ export default function Home() {
     }
 
     setIsCAnalyzing(true);
+    setCGroupNutritionHighlights([]);
+
+    // 성분표 이미지가 있으면 좌표 추출 API 호출
+    let nutritionHighlights: Array<{ field: string; coords: Array<{ x: number; y: number }> }> = [];
+    
+    if (cGroupNutritionImages.length > 0) {
+      try {
+        const nutritionRes = await fetch('/api/analyze-nutrition-with-coords', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            imageDataUrl: cGroupNutritionImages[0],
+            apiKey,
+          }),
+        });
+
+        if (nutritionRes.ok) {
+          const nutritionData = await nutritionRes.json();
+          nutritionHighlights = nutritionData.highlights || [];
+          setCGroupNutritionHighlights(nutritionHighlights);
+          
+          // 이미지 메타데이터 저장 (원본 크기)
+          if (nutritionData.meta) {
+            setCGroupNutritionImageMeta(nutritionData.meta);
+          }
+          
+          // 좌표 추출 API에서 받은 데이터로 폼 일부 업데이트
+          if (nutritionData.extractedData) {
+            const extracted = nutritionData.extractedData;
+            setCGroupFormData((prev) => ({
+              ...prev,
+              protein: extracted.protein?.replace('g', '') || prev.protein,
+              sugar: extracted.sugar?.replace('g', '') || prev.sugar,
+              fat: extracted.fat?.replace('g', '') || prev.fat,
+              total_carb: extracted.carb?.replace('g', '') || prev.total_carb,
+              calorie: extracted.calorie?.replace('kcal', '') || prev.calorie,
+              gram: extracted.gram?.replace('g', '') || prev.gram,
+            }));
+          }
+        }
+      } catch (error) {
+        console.error('Failed to analyze nutrition with coords:', error);
+      }
+    }
 
     // 두 그룹의 이미지를 합치기 (상품 이미지 먼저, 성분표 나중)
     const allImages = [...cGroupProductImages, ...cGroupNutritionImages];
@@ -2855,8 +2913,8 @@ export default function Home() {
                             })}
                         </div>
                       </details>
-                    </motion.div>
-                  )}
+                </motion.div>
+              )}
             </motion.div>
           )}
 
@@ -3128,7 +3186,7 @@ export default function Home() {
                 </RippleButton>
               </motion.div>
 
-              {/* 2단계: 검수 폼 */}
+              {/* 2단계: 검수 폼 (좌우 2분할) */}
               {cGroupFormData.name && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -3140,151 +3198,409 @@ export default function Home() {
                     데이터 검수 폼
                   </h3>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {/* name */}
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">제품명</label>
-                      <input
-                        type="text"
-                        value={cGroupFormData.name}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, name: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
-                    </div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* 왼쪽: 폼 영역 */}
+                    <div className="space-y-6">
+                      {/* Group 1: 제품 스펙 */}
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-gray-300 border-b border-white/10 pb-2">제품 스펙</h4>
+                        {/* 제품명 (Full Width) */}
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">제품명</label>
+                          <input
+                            type="text"
+                            value={cGroupFormData.name}
+                            onChange={(e) => setCGroupFormData({ ...cGroupFormData, name: e.target.value })}
+                            className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                          />
+                        </div>
 
-                    {/* link */}
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">쿠팡링크</label>
-                      <input
-                        type="url"
-                        value={cGroupFormData.link}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, link: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
-                    </div>
+                        {/* 쿠팡링크 (Full Width) */}
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">쿠팡링크</label>
+                          <input
+                            type="url"
+                            value={cGroupFormData.link}
+                            onChange={(e) => setCGroupFormData({ ...cGroupFormData, link: e.target.value })}
+                            className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                          />
+                        </div>
 
-                    {/* flavor */}
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">맛</label>
-                      <input
-                        type="text"
-                        value={cGroupFormData.flavor}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, flavor: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
-                    </div>
-
-                    {/* amount */}
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">용량</label>
-                      <input
-                        type="text"
-                        value={cGroupFormData.amount}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, amount: e.target.value })}
-                        placeholder="예: 2kg"
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
-                    </div>
-
-                    {/* category */}
-                      <div>
-                      <label className="block text-xs text-gray-400 mb-1">대분류</label>
-                      <input
-                        type="text"
-                        value={cGroupFormData.category}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, category: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
-                    </div>
-
-                    {/* sub_category */}
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">소분류</label>
-                      <input
-                        type="text"
-                        value={cGroupFormData.sub_category}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, sub_category: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
-                    </div>
-
-                    {/* protein */}
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">단백질 (g)</label>
-                        <input
-                          type="number"
-                        value={cGroupFormData.protein}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, protein: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
+                        {/* 맛 | 용량 | 대분류 | 소분류 */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">맛</label>
+                            <input
+                              type="text"
+                              value={cGroupFormData.flavor}
+                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, flavor: e.target.value })}
+                              className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">용량</label>
+                            <input
+                              type="text"
+                              value={cGroupFormData.amount}
+                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, amount: e.target.value })}
+                              placeholder="예: 2kg"
+                              className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">대분류</label>
+                            <input
+                              type="text"
+                              value={cGroupFormData.category}
+                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, category: e.target.value })}
+                              className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">소분류</label>
+                            <input
+                              type="text"
+                              value={cGroupFormData.sub_category}
+                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, sub_category: e.target.value })}
+                              className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                            />
+                          </div>
+                        </div>
                       </div>
 
-                    {/* scoops */}
-                      <div>
-                      <label className="block text-xs text-gray-400 mb-1">총 서빙 횟수</label>
-                        <input
-                          type="number"
-                        value={cGroupFormData.scoops}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, scoops: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
+                      {/* Group 2: 영양 정보 (성분표 순서) */}
+                      <div className="space-y-4 p-4 border border-white/10 rounded-lg bg-zinc-900/30">
+                        <h4 className="text-sm font-semibold text-gray-300 border-b border-white/10 pb-2">영양 정보</h4>
+                        {/* 1회 섭취량 (gram) | 총 서빙 횟수 (scoops) */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">1회 섭취량 (g)</label>
+                            <input
+                              type="number"
+                              value={cGroupFormData.gram}
+                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, gram: e.target.value })}
+                              onFocus={() => setCGroupFocusedField('gram')}
+                              onBlur={() => setCGroupFocusedField(null)}
+                              className={`w-full px-3 py-2 bg-black/50 backdrop-blur-xl border rounded-lg text-white text-sm focus:outline-none focus:ring-2 transition ${
+                                cGroupFocusedField === 'gram'
+                                  ? 'border-green-400 focus:border-green-400 focus:ring-green-400/20'
+                                  : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">총 서빙 횟수</label>
+                            <input
+                              type="number"
+                              value={cGroupFormData.scoops}
+                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, scoops: e.target.value })}
+                              className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                            />
+                          </div>
+                        </div>
 
-                    {/* sugar */}
-                      <div>
-                      <label className="block text-xs text-gray-400 mb-1">당류 (g)</label>
-                        <input
-                          type="number"
-                        value={cGroupFormData.sugar}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, sugar: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
+                        {/* 칼로리 (kcal) */}
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">칼로리 (kcal)</label>
+                          <input
+                            type="number"
+                            value={cGroupFormData.calorie}
+                            onChange={(e) => setCGroupFormData({ ...cGroupFormData, calorie: e.target.value })}
+                            onFocus={() => setCGroupFocusedField('calorie')}
+                            onBlur={() => setCGroupFocusedField(null)}
+                            className={`w-full px-3 py-2 bg-black/50 backdrop-blur-xl border rounded-lg text-white text-sm focus:outline-none focus:ring-2 transition ${
+                              cGroupFocusedField === 'calorie'
+                                ? 'border-purple-400 focus:border-purple-400 focus:ring-purple-400/20'
+                                : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
+                            }`}
+                          />
+                        </div>
 
-                    {/* fat */}
-                      <div>
-                      <label className="block text-xs text-gray-400 mb-1">지방 (g)</label>
-                        <input
-                          type="number"
-                        value={cGroupFormData.fat}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, fat: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
+                        {/* 지방 (fat) */}
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">지방 (g)</label>
+                          <input
+                            type="number"
+                            value={cGroupFormData.fat}
+                            onChange={(e) => setCGroupFormData({ ...cGroupFormData, fat: e.target.value })}
+                            onFocus={() => setCGroupFocusedField('fat')}
+                            onBlur={() => setCGroupFocusedField(null)}
+                            className={`w-full px-3 py-2 bg-black/50 backdrop-blur-xl border rounded-lg text-white text-sm focus:outline-none focus:ring-2 transition ${
+                              cGroupFocusedField === 'fat'
+                                ? 'border-blue-400 focus:border-blue-400 focus:ring-blue-400/20'
+                                : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
+                            }`}
+                          />
+                        </div>
 
-                    {/* calorie */}
-                      <div>
-                      <label className="block text-xs text-gray-400 mb-1">칼로리 (kcal)</label>
-                        <input
-                          type="number"
-                        value={cGroupFormData.calorie}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, calorie: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
+                        {/* 총 탄수화물 (total_carb) | 당류 (sugar) */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">총 탄수화물 (g)</label>
+                            <input
+                              type="number"
+                              value={cGroupFormData.total_carb}
+                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, total_carb: e.target.value })}
+                              onFocus={() => setCGroupFocusedField('carb')}
+                              onBlur={() => setCGroupFocusedField(null)}
+                              className={`w-full px-3 py-2 bg-black/50 backdrop-blur-xl border rounded-lg text-white text-sm focus:outline-none focus:ring-2 transition ${
+                                cGroupFocusedField === 'carb'
+                                  ? 'border-orange-400 focus:border-orange-400 focus:ring-orange-400/20'
+                                  : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
+                              }`}
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-400 mb-1">당류 (g)</label>
+                            <input
+                              type="number"
+                              value={cGroupFormData.sugar}
+                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, sugar: e.target.value })}
+                              onFocus={() => setCGroupFocusedField('sugar')}
+                              onBlur={() => setCGroupFocusedField(null)}
+                              className={`w-full px-3 py-2 bg-black/50 backdrop-blur-xl border rounded-lg text-white text-sm focus:outline-none focus:ring-2 transition ${
+                                cGroupFocusedField === 'sugar'
+                                  ? 'border-red-400 focus:border-red-400 focus:ring-red-400/20'
+                                  : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
+                              }`}
+                            />
+                          </div>
+                        </div>
 
-                    {/* gram */}
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">1회 섭취량 (g)</label>
-                      <input
-                        type="number"
-                        value={cGroupFormData.gram}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, gram: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
+                        {/* 단백질 (protein) - 강조 */}
+                        <div>
+                          <label className="block text-xs text-gray-400 mb-1">
+                            단백질 (g) <span className="text-[#ccff00]">*</span>
+                          </label>
+                          <input
+                            type="number"
+                            value={cGroupFormData.protein}
+                            onChange={(e) => setCGroupFormData({ ...cGroupFormData, protein: e.target.value })}
+                            onFocus={() => setCGroupFocusedField('protein')}
+                            onBlur={() => setCGroupFocusedField(null)}
+                            className={`w-full px-4 py-3 bg-black/50 backdrop-blur-xl border rounded-lg text-lg font-bold text-[#ccff00] focus:outline-none focus:ring-2 transition ${
+                              cGroupFocusedField === 'protein'
+                                ? 'border-yellow-400 focus:border-yellow-400 focus:ring-yellow-400/20'
+                                : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
+                            }`}
+                          />
+                        </div>
+                      </div>
                     </div>
 
-                    {/* total_carb */}
-                    <div>
-                      <label className="block text-xs text-gray-400 mb-1">총 탄수화물 (g)</label>
-                      <input
-                        type="number"
-                        value={cGroupFormData.total_carb}
-                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, total_carb: e.target.value })}
-                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
-                    </div>
+                    {/* 오른쪽: 성분표 하이라이트 뷰어 */}
+                    {cGroupNutritionImages.length > 0 && (
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-[#ccff00] flex items-center gap-2">
+                          <FileText className="w-4 h-4" />
+                          성분표 뷰어 (호버 시 확대)
+                        </h4>
+                        <div 
+                          className="relative w-full bg-black/20 rounded-lg overflow-hidden cursor-crosshair"
+                          onMouseMove={(e) => {
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            const x = ((e.clientX - rect.left) / rect.width) * 100;
+                            const y = ((e.clientY - rect.top) / rect.height) * 100;
+                            setNutritionImageMagnifier({ x, y, isHovering: true });
+                          }}
+                          onMouseLeave={() => {
+                            setNutritionImageMagnifier(prev => ({ ...prev, isHovering: false }));
+                          }}
+                          onClick={() => setIsNutritionImageZoomed(true)}
+                        >
+                          <img
+                            ref={nutritionImageRef}
+                            src={cGroupNutritionImages[0]}
+                            alt="Nutrition facts"
+                            className="w-full h-auto transition-transform duration-100 ease-out"
+                            style={{
+                              transform: nutritionImageMagnifier.isHovering 
+                                ? `scale(2.5)` 
+                                : 'scale(1)',
+                              transformOrigin: `${nutritionImageMagnifier.x}% ${nutritionImageMagnifier.y}%`,
+                            }}
+                            onLoad={() => {
+                              setNutritionImageLoaded(true);
+                            }}
+                          />
+                          {/* 하이라이트 오버레이 (주석 처리) */}
+                          {/* <div className="absolute inset-0 pointer-events-none">
+                            디버깅용: 하이라이트가 없을 때 포커스된 필드에 테스트 박스 표시
+                            {cGroupNutritionHighlights.length === 0 && cGroupFocusedField && (
+                              <div
+                                className="absolute z-10 border-2 border-yellow-400 bg-yellow-400/20 rounded animate-pulse"
+                                style={{
+                                  left: '30%',
+                                  top: '30%',
+                                  width: '40%',
+                                  height: '10%',
+                                }}
+                              >
+                                <div className="absolute -top-6 left-0 text-xs text-yellow-400 font-semibold">
+                                  [디버그] {cGroupFocusedField} 필드 포커스됨
+                                </div>
+                              </div>
+                            )}
+                            
+                            {cGroupNutritionHighlights.map((highlight, idx) => {
+                              if (!highlight.coords || highlight.coords.length === 0) return null;
+                              
+                              // 원본 이미지 크기 (백엔드에서 받은 meta 정보)
+                              const originalWidth = cGroupNutritionImageMeta?.width || 1000;
+                              const originalHeight = cGroupNutritionImageMeta?.height || 1000;
+                              
+                              // 좌표에서 박스 영역 계산 (원본 이미지 기준)
+                              const minX = Math.min(...highlight.coords.map(c => c.x));
+                              const maxX = Math.max(...highlight.coords.map(c => c.x));
+                              const minY = Math.min(...highlight.coords.map(c => c.y));
+                              const maxY = Math.max(...highlight.coords.map(c => c.y));
+                              
+                              // % 단위로 변환 (정규화)
+                              const leftPercent = (minX / originalWidth) * 100;
+                              const topPercent = (minY / originalHeight) * 100;
+                              const widthPercent = ((maxX - minX) / originalWidth) * 100;
+                              const heightPercent = ((maxY - minY) / originalHeight) * 100;
+
+                              // 색상 매핑
+                              const colorMap: Record<string, { border: string; bg: string; shadow: string }> = {
+                                protein: { border: 'border-yellow-400', bg: 'bg-yellow-400/30', shadow: 'shadow-[0_0_10px_rgba(250,204,21,0.5)]' },
+                                sugar: { border: 'border-red-400', bg: 'bg-red-400/30', shadow: 'shadow-[0_0_10px_rgba(248,113,113,0.5)]' },
+                                fat: { border: 'border-blue-400', bg: 'bg-blue-400/30', shadow: 'shadow-[0_0_10px_rgba(96,165,250,0.5)]' },
+                                carb: { border: 'border-orange-400', bg: 'bg-orange-400/30', shadow: 'shadow-[0_0_10px_rgba(251,146,60,0.5)]' },
+                                calorie: { border: 'border-purple-400', bg: 'bg-purple-400/30', shadow: 'shadow-[0_0_10px_rgba(196,181,253,0.5)]' },
+                                gram: { border: 'border-green-400', bg: 'bg-green-400/30', shadow: 'shadow-[0_0_10px_rgba(74,222,128,0.5)]' },
+                              };
+
+                              const colors = colorMap[highlight.field] || { border: 'border-gray-400', bg: 'bg-gray-400/30', shadow: 'shadow-[0_0_10px_rgba(156,163,175,0.5)]' };
+                              const isFocused = cGroupFocusedField === highlight.field;
+
+                              return (
+                                <div
+                                  key={idx}
+                                  onMouseEnter={() => setCGroupFocusedField(highlight.field)}
+                                  onMouseLeave={() => setCGroupFocusedField(null)}
+                                  className="absolute pointer-events-auto cursor-pointer z-10"
+                                  style={{
+                                    left: `${leftPercent}%`,
+                                    top: `${topPercent}%`,
+                                    width: `${widthPercent}%`,
+                                    height: `${heightPercent}%`,
+                                  }}
+                                >
+                                  <div
+                                    className={`absolute inset-0 border-2 rounded transition-all ${
+                                      isFocused
+                                        ? `${colors.border} ${colors.bg} ${colors.shadow} animate-pulse`
+                                        : `${colors.border} ${colors.bg}`
+                                    }`}
+                                    style={{
+                                      backgroundColor: isFocused 
+                                        ? undefined 
+                                        : colors.bg.includes('yellow') ? 'rgba(250, 204, 21, 0.2)'
+                                        : colors.bg.includes('red') ? 'rgba(248, 113, 113, 0.2)'
+                                        : colors.bg.includes('blue') ? 'rgba(96, 165, 250, 0.2)'
+                                        : colors.bg.includes('orange') ? 'rgba(251, 146, 60, 0.2)'
+                                        : colors.bg.includes('purple') ? 'rgba(196, 181, 253, 0.2)'
+                                        : colors.bg.includes('green') ? 'rgba(74, 222, 128, 0.2)'
+                                        : 'rgba(156, 163, 175, 0.2)',
+                                    }}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <div className="text-xs text-gray-400 space-y-1">
+                          <p>• 마우스를 올리면 해당 위치가 2.5배 확대됩니다 (호버 돋보기)</p>
+                          <p>• 이미지를 클릭하면 전체 화면 확대 모드로 전환됩니다</p>
+                          <p>• 확대 모드에서 마우스 휠로 줌인/줌아웃이 가능합니다</p>
+                          {/* 하이라이트 기능은 일시적으로 비활성화됨 */}
+                          {/* {cGroupNutritionHighlights.length === 0 && (
+                            <p className="text-yellow-400">⚠️ 하이라이트 데이터가 없습니다. API 응답을 확인하세요.</p>
+                          )}
+                          {cGroupNutritionImageMeta && (
+                            <p className="text-gray-500">📐 원본 이미지 크기: {cGroupNutritionImageMeta.width} × {cGroupNutritionImageMeta.height}px</p>
+                          )} */}
+                        </div>
+                      </div>
+                    )}
                   </div>
+
+                  {/* 이미지 확대 모달 (라이트박스) */}
+                  <AnimatePresence>
+                    {isNutritionImageZoomed && cGroupNutritionImages.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 bg-black/90 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => {
+                          setIsNutritionImageZoomed(false);
+                          setNutritionImageZoom(1);
+                        }}
+                      >
+                        <motion.div
+                          initial={{ scale: 0.9 }}
+                          animate={{ scale: 1 }}
+                          exit={{ scale: 0.9 }}
+                          className="relative max-w-[95vw] max-h-[95vh] overflow-auto bg-black/50 rounded-lg p-4"
+                          onClick={(e) => e.stopPropagation()}
+                          onWheel={(e) => {
+                            e.preventDefault();
+                            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+                            setNutritionImageZoom((prev) => Math.max(0.5, Math.min(3, prev + delta)));
+                          }}
+                        >
+                          {/* 닫기 버튼 */}
+                          <button
+                            onClick={() => {
+                              setIsNutritionImageZoomed(false);
+                              setNutritionImageZoom(1);
+                            }}
+                            className="absolute top-2 right-2 z-10 p-2 bg-black/70 hover:bg-black rounded-full text-white transition-all"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+
+                          {/* 줌 컨트롤 */}
+                          <div className="absolute top-2 left-2 z-10 flex gap-2">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNutritionImageZoom((prev) => Math.max(0.5, prev - 0.2));
+                              }}
+                              className="p-2 bg-black/70 hover:bg-black rounded-full text-white transition-all"
+                            >
+                              <ZoomOut className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setNutritionImageZoom((prev) => Math.min(3, prev + 0.2));
+                              }}
+                              className="p-2 bg-black/70 hover:bg-black rounded-full text-white transition-all"
+                            >
+                              <ZoomIn className="w-4 h-4" />
+                            </button>
+                            <div className="px-3 py-2 bg-black/70 rounded-full text-white text-xs flex items-center">
+                              {Math.round(nutritionImageZoom * 100)}%
+                            </div>
+                          </div>
+
+                          {/* 확대된 이미지 */}
+                          <img
+                            src={cGroupNutritionImages[0]}
+                            alt="Nutrition facts (zoomed)"
+                            className="transition-transform duration-200"
+                            style={{
+                              transform: `scale(${nutritionImageZoom})`,
+                              transformOrigin: 'center',
+                            }}
+                          />
+                        </motion.div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   {/* 3단계: 액션 버튼 */}
                   <div className="mt-6 flex gap-4">
