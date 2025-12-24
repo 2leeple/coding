@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion';
+import { VirtuosoGrid } from 'react-virtuoso';
 import {
   Save,
   Key,
@@ -16,9 +17,28 @@ import {
   Loader2,
   X,
   Edit,
+  ChevronDown,
+  LayoutGrid,
+  List,
+  Download,
+  ArrowRight,
 } from 'lucide-react';
 
 type Tab = 'A' | 'B' | 'C';
+
+// 7대 카테고리 필터링 상수
+const FILTER_CATEGORIES = {
+  '🥩 단백질 보충제': ['전체', 'WPC', 'WPI', '식물성', '카제인', '게이너', '선식(탄수)', '마이프로틴', '국내(비추)'],
+  '💪 운동보조제': ['전체', '크레아틴', '부스터', '아르기닌', '비트즙', '베타알라닌'],
+  '🧃 단백질 드링크': ['전체', '단백질몰빵', '고단백두유', '탄수↑,당↓'],
+  '🍫 단백질 간식': ['전체', '프로틴바', '칩', '프로틴쿠키', '씨리얼'],
+  '🍬 기타 간식': ['전체', '유제품', '오징어', '과일', '빵', '초콜릿', '기타'],
+  '💊 영양제': ['전체', '비타민D', '아연', '홍삼', '유산균', '종합비타민', '오메가3'],
+  '🐔 닭가슴살': ['전체', '스테이크', '소시지', '볼', '훈제', '소스'],
+} as const;
+
+type CategoryLarge = keyof typeof FILTER_CATEGORIES;
+type CategorySmall = typeof FILTER_CATEGORIES[CategoryLarge][number];
 
 interface Product {
   id: string;
@@ -286,7 +306,23 @@ const EditProductModal = ({
   const [formData, setFormData] = useState<Partial<Product>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [isHoveringImage, setIsHoveringImage] = useState(false);
+  const [isRemovingBackground, setIsRemovingBackground] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('배경 제거 중... ✂️');
+  const [imageUrlInput, setImageUrlInput] = useState('');
   const imageContainerRef = useRef<HTMLDivElement>(null);
+
+  // 카테고리 맵핑 (이모지 제거 버전)
+  const CATEGORY_MAP: Record<string, string[]> = {
+    '단백질 보충제': ['WPC', 'WPI', '식물성', '카제인', '게이너', '선식(탄수)', '마이프로틴', '국내(비추)'],
+    '운동보조제': ['크레아틴', '부스터', '아르기닌', '비트즙', '베타알라닌'],
+    '단백질 드링크': ['단백질몰빵', '고단백두유', '탄수↑,당↓'],
+    '단백질 간식': ['프로틴바', '쿠키', '칩', '베이커리'],
+    '기타 간식': ['젤리', '초콜릿', '저당소스', '유제품', '오징어', '과일', '빵'],
+    '영양제': ['종합비타민', '오메가3', '유산균', '밀크씨슬', '비타민D', '아연', '홍삼'],
+    '닭가슴살': ['스테이크', '소시지', '볼', '훈제', '소스'],
+  };
+
+  const categoryKeys = Object.keys(CATEGORY_MAP);
 
   useEffect(() => {
     if (product) {
@@ -299,40 +335,141 @@ const EditProductModal = ({
         weight: product.weight || '',
         imageUrl: product.imageUrl || '',
       });
+      setImageUrlInput(''); // URL 입력 필드 초기화
     }
   }, [product]);
 
+  // 대분류 변경 시 소분류 초기화
+  const handleCategoryLargeChange = (value: string) => {
+    const subCategories = CATEGORY_MAP[value] || [];
+    setFormData({
+      ...formData,
+      category_large: value,
+      category_small: subCategories.length > 0 ? subCategories[0] : '',
+    });
+  };
 
-  useEffect(() => {
-    if (isOpen) {
-      const handlePaste = async (e: ClipboardEvent) => {
-        const items = e.clipboardData?.items;
-        if (!items) return;
-        
-        const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
-        if (imageItems.length === 0) return;
 
-        try {
-          const file = imageItems[0].getAsFile();
-          if (!file) return;
+  const handleImagePaste = async (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const items = e.clipboardData.items;
+    const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
 
-          const reader = new FileReader();
-          reader.onload = async (e) => {
-            const dataUrl = e.target?.result as string;
-            // 이미지 해상도 보장 (최소 가로 1000px)
-            const resizedDataUrl = await ensureImageResolution(dataUrl, 1000);
-            setFormData((prev) => ({ ...prev, imageUrl: resizedDataUrl }));
-          };
-          reader.readAsDataURL(file);
-        } catch (error) {
-          console.error('Failed to process image:', error);
-        }
-      };
+    if (imageItems.length === 0) return;
+
+    const file = imageItems[0].getAsFile();
+    if (!file) return;
+
+    // 공통 이미지 처리 함수 사용
+    await processImage(file);
+  };
+
+  // 공통 이미지 처리 함수 (File 또는 Blob을 처리)
+  const processImage = async (fileOrBlob: File | Blob, message: string = '배경 제거 중... ✂️') => {
+    setIsRemovingBackground(true);
+    setLoadingMessage(message);
+
+    try {
+      // File 객체로 변환 (Blob인 경우)
+      const file = fileOrBlob instanceof File 
+        ? fileOrBlob 
+        : new File([fileOrBlob], 'image.png', { type: fileOrBlob.type || 'image/png' });
+
+      // 배경 제거 단계로 메시지 변경
+      setLoadingMessage('배경 제거 중... ✂️');
+
+      // 배경 제거 유틸리티 함수 import
+      const { removeBackground, blobToDataURL } = await import('../utils/imageProcessor');
       
-      window.addEventListener('paste', handlePaste);
-      return () => window.removeEventListener('paste', handlePaste);
+      // 배경 제거 실행
+      const processedBlob = await removeBackground(file);
+      
+      // Blob을 Base64로 변환
+      const processedDataUrl = await blobToDataURL(processedBlob);
+      
+      // 이미지 해상도 보장 (최소 가로 1000px)
+      const resizedDataUrl = await ensureImageResolution(processedDataUrl, 1000);
+      
+      setFormData((prev) => ({ ...prev, imageUrl: resizedDataUrl }));
+      setIsRemovingBackground(false);
+      // URL 입력 필드 초기화
+      if (imageUrlInput) {
+        setImageUrlInput('');
+      }
+    } catch (error) {
+      console.error('Failed to process image:', error);
+      setIsRemovingBackground(false);
+      
+      // 에러 발생 시 원본 이미지로 폴백
+      try {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const dataUrl = e.target?.result as string;
+          const resizedDataUrl = await ensureImageResolution(dataUrl, 1000);
+          setFormData((prev) => ({ ...prev, imageUrl: resizedDataUrl }));
+        };
+        reader.readAsDataURL(fileOrBlob);
+      } catch (fallbackError) {
+        console.error('Failed to load original image:', fallbackError);
+      }
     }
-  }, [isOpen]);
+  };
+
+  // URL 정규화 함수 (프로토콜 자동 완성)
+  const normalizeImageUrl = (url: string): string => {
+    const trimmed = url.trim();
+    
+    // //로 시작하면 https: 추가
+    if (trimmed.startsWith('//')) {
+      return `https:${trimmed}`;
+    }
+    
+    // 프로토콜이 없으면 https:// 추가
+    if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+      return `https://${trimmed}`;
+    }
+    
+    return trimmed;
+  };
+
+  // URL에서 이미지 가져오기
+  const handleImageUrlSubmit = async () => {
+    if (!imageUrlInput.trim()) return;
+
+    setIsRemovingBackground(true);
+    setLoadingMessage('이미지 불러오는 중...');
+
+    try {
+      // URL 정규화 (프로토콜 자동 완성)
+      const normalizedUrl = normalizeImageUrl(imageUrlInput.trim());
+      
+      // 프록시 API를 통해 이미지 가져오기 (CORS 우회)
+      const encodedUrl = encodeURIComponent(normalizedUrl);
+      const response = await fetch(`/api/image-proxy?url=${encodedUrl}`);
+
+      if (!response.ok) {
+        // 에러 응답이 JSON인 경우
+        if (response.headers.get('content-type')?.includes('application/json')) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || '이미지 주소를 확인해주세요');
+        }
+        throw new Error(`이미지를 불러올 수 없습니다 (${response.status})`);
+      }
+
+      // Blob 데이터로 변환
+      const blob = await response.blob();
+      
+      // 공통 이미지 처리 함수 사용 (배경 제거 -> 압축)
+      await processImage(blob, '이미지 불러오는 중...');
+    } catch (error: any) {
+      console.error('Failed to load image from URL:', error);
+      setIsRemovingBackground(false);
+      
+      // 토스트 메시지 표시
+      const errorMessage = error.message || '이미지 주소를 확인해주세요';
+      alert(`${errorMessage}\n\n다운로드 후 붙여넣기 해주세요.`);
+    }
+  };
 
   const handleSave = async () => {
     if (!product) return;
@@ -399,12 +536,14 @@ const EditProductModal = ({
                 >
                   {formData.imageUrl ? (
                     <>
-                      <img
-                        src={formData.imageUrl}
-                        alt={product.name}
-                        className="w-full h-full object-cover"
-                      />
-                      {isHoveringImage && (
+                      <div className="w-full h-full bg-black/20 flex items-center justify-center p-2">
+                        <img
+                          src={formData.imageUrl}
+                          alt={product.name}
+                          className="w-full h-full object-contain"
+                        />
+                      </div>
+                      {isHoveringImage && !isRemovingBackground && (
                         <motion.div
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
@@ -425,6 +564,51 @@ const EditProductModal = ({
                       </div>
                     </div>
                   )}
+                  
+                  {/* 배경 제거 로딩 오버레이 */}
+                  {isRemovingBackground && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center z-10"
+                    >
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      >
+                        <Loader2 className="w-8 h-8 text-[#ccff00] mb-3" />
+                      </motion.div>
+                      <p className="text-[#ccff00] font-medium text-sm">{loadingMessage}</p>
+                      <p className="text-gray-400 text-xs mt-1">잠시만 기다려주세요</p>
+                    </motion.div>
+                  )}
+                </div>
+
+                {/* URL 입력 섹션 */}
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-400">또는 이미지 주소로 변경</p>
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={imageUrlInput}
+                      onChange={(e) => setImageUrlInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          handleImageUrlSubmit();
+                        }
+                      }}
+                      placeholder="https://..."
+                      className="flex-1 px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition placeholder:text-gray-500"
+                    />
+                    <RippleButton
+                      onClick={handleImageUrlSubmit}
+                      disabled={!imageUrlInput.trim() || isRemovingBackground}
+                      className="px-4 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_10px_rgba(204,255,0,0.3)] hover:shadow-[0_0_15px_rgba(204,255,0,0.5)] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <ArrowRight className="w-4 h-4" />
+                      적용
+                    </RippleButton>
+                  </div>
                 </div>
 
                 {/* 상품명 - 가장 눈에 띄게 */}
@@ -457,27 +641,45 @@ const EditProductModal = ({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">대분류</label>
-                    <input
-                      type="text"
-                      value={formData.category_large || ''}
-                      onChange={(e) =>
-                        setFormData({ ...formData, category_large: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      placeholder="대분류"
-                    />
+                    <div className="relative">
+                      <select
+                        value={formData.category_large || ''}
+                        onChange={(e) => handleCategoryLargeChange(e.target.value)}
+                        className="w-full px-4 py-3 pr-10 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white appearance-none focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition cursor-pointer"
+                      >
+                        <option value="" className="bg-gray-900 text-white">선택하세요</option>
+                        {categoryKeys.map((key) => (
+                          <option key={key} value={key} className="bg-gray-900 text-white">
+                            {key}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-sm text-gray-400 mb-2">소분류</label>
-                    <input
-                      type="text"
-                      value={formData.category_small || ''}
-                      onChange={(e) =>
-                        setFormData({ ...formData, category_small: e.target.value })
-                      }
-                      className="w-full px-4 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      placeholder="소분류"
-                    />
+                    <div className="relative">
+                      <select
+                        value={formData.category_small || ''}
+                        onChange={(e) =>
+                          setFormData({ ...formData, category_small: e.target.value })
+                        }
+                        disabled={!formData.category_large}
+                        className="w-full px-4 py-3 pr-10 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white appearance-none focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <option value="" className="bg-gray-900 text-white">
+                          {formData.category_large ? '선택하세요' : '대분류를 먼저 선택하세요'}
+                        </option>
+                        {formData.category_large &&
+                          CATEGORY_MAP[formData.category_large]?.map((subCategory) => (
+                            <option key={subCategory} value={subCategory} className="bg-gray-900 text-white">
+                              {subCategory}
+                            </option>
+                          ))}
+                      </select>
+                      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+                    </div>
                   </div>
                 </div>
 
@@ -540,6 +742,20 @@ const EditProductModal = ({
   );
 };
 
+// VirtuosoGrid용 List 컴포넌트 (ref 전달 보장)
+const GridList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+  ({ children, ...props }, ref) => (
+    <div
+      ref={ref}
+      {...props}
+      className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pb-20 w-full"
+    >
+      {children}
+    </div>
+  )
+);
+GridList.displayName = 'GridList';
+
 export default function Home() {
   const [apiKey, setApiKey] = useState<string>('');
   const [activeTab, setActiveTab] = useState<Tab>('A');
@@ -552,6 +768,9 @@ export default function Home() {
   const [showToast, setShowToast] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryLarge | null>(null);
+  const [selectedSubCategory, setSelectedSubCategory] = useState<CategorySmall | null>(null);
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -559,8 +778,16 @@ export default function Home() {
     if (savedKey) {
       setApiKey(savedKey);
     }
+    const savedViewMode = localStorage.getItem('view_mode') as 'grid' | 'list' | null;
+    if (savedViewMode) {
+      setViewMode(savedViewMode);
+    }
     loadProducts();
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('view_mode', viewMode);
+  }, [viewMode]);
 
   const loadProducts = async () => {
     try {
@@ -651,17 +878,34 @@ export default function Home() {
    - 가장 크고 굵은 글씨가 상품명입니다
    - 예: "컴뱃 프로틴 파우더", "웨이 프로틴 아이솔레이트"
 
-3. Category_large (대분류):
-   - 이미지 상단이나 카드 내부에 있는 경로(Breadcrumb) 텍스트를 찾으세요
-   - 예: "단백질 보충제 > WPC" → "단백질 보충제"
-   - 예: "보충제 > 프로틴" → "보충제"
-   - 경로 텍스트가 없으면 문맥상 대분류를 추론하세요
+3. Category_large (대분류) - 7대 카테고리 중 하나로 반드시 분류:
+   다음 7가지 카테고리 중 상품명과 특징을 보고 정확히 하나를 선택하세요:
+   
+   🥩 "단백질 보충제": 프로틴 파우더, WPC, WPI, 식물성 단백질, 카제인, 게이너 등
+   💪 "운동보조제": 크레아틴, 부스터, 아르기닌, 비트즙, 베타알라닌 등
+   🧃 "단백질 드링크": 단백질 음료, 고단백 두유, 단백질몰빵 등
+   🍫 "단백질 간식": 프로틴바, 프로틴 칩, 프로틴 쿠키, 씨리얼 등
+   🍬 "기타 간식": 유제품, 오징어, 과일, 빵, 초콜릿 등 (단백질이 아닌 일반 간식)
+   💊 "영양제": 비타민D, 아연, 홍삼, 유산균, 종합비타민, 오메가3 등
+   🐔 "닭가슴살": 닭가슴살 스테이크, 소시지, 볼, 훈제, 소스 등
+   
+   - 이미지 상단의 경로 텍스트가 있으면 그것을 우선 사용하세요
+   - 없으면 상품명과 특징을 보고 위 7가지 중 가장 적합한 것을 선택하세요
+   - 이모지는 제외하고 텍스트만 반환하세요 (예: "단백질 보충제")
 
 4. Category_small (소분류):
-   - 경로 텍스트의 끝부분을 찾으세요
-   - 예: "단백질 보충제 > WPC" → "WPC"
-   - 예: "케이스인", "WPI", "식물성", "유청" 등
-   - 상품 특징에서 소분류를 추출하세요
+   선택한 대분류에 따라 다음 소분류 중 하나를 선택하세요:
+   
+   단백질 보충제: "WPC", "WPI", "식물성", "카제인", "게이너", "선식(탄수)", "마이프로틴", "국내(비추)"
+   운동보조제: "크레아틴", "부스터", "아르기닌", "비트즙", "베타알라닌"
+   단백질 드링크: "단백질몰빵", "고단백두유", "탄수↑,당↓"
+   단백질 간식: "프로틴바", "칩", "프로틴쿠키", "씨리얼"
+   기타 간식: "유제품", "오징어", "과일", "빵", "초콜릿", "기타"
+   영양제: "비타민D", "아연", "홍삼", "유산균", "종합비타민", "오메가3"
+   닭가슴살: "스테이크", "소시지", "볼", "훈제", "소스"
+   
+   - 경로 텍스트나 상품 특징에서 소분류를 추출하세요
+   - 명확하지 않으면 가장 유사한 것을 선택하세요
 
 5. Flavor (맛):
    - 상품명 근처나 아래에 있는 작은 글씨를 찾으세요
@@ -679,12 +923,13 @@ export default function Home() {
 ✅ 반드시 지킬 것:
 - 이미지가 잘려서 일부만 보여도 최대한 텍스트를 복원해서 입력하세요
 - 위에서 아래까지 모든 상품을 추출하세요 (하나도 빠뜨리지 마세요)
+- category_large는 반드시 위 7가지 중 하나로 분류하세요 (이모지 제외)
 
 다음 형식의 JSON 배열로 응답하세요 (반드시 배열 형태):
 [
   {
     "name": "상품 전체 이름",
-    "category_large": "대분류",
+    "category_large": "대분류 (7대 카테고리 중 하나, 이모지 제외)",
     "category_small": "소분류",
     "flavor": "맛",
     "weight": "용량"
@@ -984,6 +1229,96 @@ export default function Home() {
     }
   };
 
+  // 이모지 제거 및 텍스트 정규화 헬퍼 함수
+  const normalizeCategoryName = (categoryName: string): string => {
+    if (!categoryName) return '';
+    // 이모지 제거 (🥩💪🧃🍫🍬💊🐔 등)
+    return categoryName.replace(/[🥩💪🧃🍫🍬💊🐔]\s*/g, '').trim();
+  };
+
+  // ProductCard 컴포넌트 (React.memo로 최적화)
+  const ProductCard = memo(({ product, onDoubleClick, onDelete }: {
+    product: Product;
+    onDoubleClick: (product: Product) => void;
+    onDelete: (id: string) => void;
+  }) => {
+    return (
+      <motion.div
+        initial={false}
+        animate={{ opacity: 1 }}
+        whileHover={{ scale: 1.05, y: -5 }}
+        onDoubleClick={() => onDoubleClick(product)}
+        className="group bg-zinc-900/80 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-h-[280px] h-full hover:border-[#ccff00] hover:shadow-[0_0_20px_rgba(204,255,0,0.3)] transition-all cursor-pointer"
+        title="더블 클릭하여 수정"
+      >
+        {product.imageUrl && (
+          <div className="relative w-full aspect-square bg-black/20 rounded-lg mb-2 p-1.5 flex items-center justify-center overflow-hidden">
+            <img
+              src={product.imageUrl}
+              alt={product.name}
+              decoding="async"
+              className="w-full h-full object-contain rounded-lg"
+            />
+          </div>
+        )}
+        <div className="space-y-1.5">
+          {/* Category Badges */}
+          {(product.category_large || product.category_small) && (
+            <div className="flex flex-wrap gap-1">
+              {product.category_large && (
+                <span className="px-1.5 py-0.5 bg-[#ccff00]/20 text-[#ccff00] text-[10px] rounded-full border border-[#ccff00]/30">
+                  {product.category_large}
+                </span>
+              )}
+              {product.category_small && (
+                <span className="px-1.5 py-0.5 bg-[#ccff00]/10 text-[#ccff00]/80 text-[10px] rounded-full border border-[#ccff00]/20">
+                  {product.category_small}
+                </span>
+              )}
+            </div>
+          )}
+          <div className="space-y-0.5">
+            {product.brand && (
+              <div className="text-[10px] text-gray-500">{product.brand}</div>
+            )}
+            <div className="font-semibold text-sm text-[#ccff00] line-clamp-2">{product.name}</div>
+            {product.flavor && <div className="text-xs text-gray-300">{product.flavor}</div>}
+            {product.weight && <div className="text-xs text-gray-400">{product.weight}</div>}
+            {product.protein !== undefined && (
+              <div className="text-xs text-gray-400">단백질: {product.protein}g</div>
+            )}
+          </div>
+        </div>
+        <RippleButton
+          onClick={() => onDelete(product.id)}
+          className="mt-2 w-full h-8 px-2 py-1 bg-red-600/20 hover:bg-red-600/30 border border-red-600/50 rounded-lg text-xs transition-all flex items-center justify-center gap-1.5 text-red-400"
+        >
+          <Trash2 className="w-3 h-3" />
+          삭제
+        </RippleButton>
+      </motion.div>
+    );
+  });
+
+  ProductCard.displayName = 'ProductCard';
+
+  // 카테고리별 상품 개수 계산 (useMemo)
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    const totalCount = products.length;
+
+    // 각 카테고리별 개수 계산
+    Object.keys(FILTER_CATEGORIES).forEach((categoryKey) => {
+      const normalizedCategoryName = normalizeCategoryName(categoryKey);
+      counts[categoryKey] = products.filter((p) => {
+        const productCategory = (p.category_large || '').trim();
+        return productCategory === normalizedCategoryName;
+      }).length;
+    });
+
+    return { ...counts, total: totalCount };
+  }, [products]);
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
@@ -1116,76 +1451,272 @@ export default function Home() {
                 </p>
               </motion.div>
 
+              {/* 1단: 대분류 필터 (그리드 레이아웃) */}
               <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-xl"
               >
-                {products.map((product, index) => (
-                  <motion.div
-                    key={product.id}
-                    variants={itemVariants}
-                    whileHover={{ scale: 1.05, y: -5 }}
-                    onDoubleClick={() => handleProductDoubleClick(product)}
-                    className="group bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 hover:border-[#ccff00] hover:shadow-[0_0_20px_rgba(204,255,0,0.3)] transition-all cursor-pointer"
-                    title="더블 클릭하여 수정"
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {/* 전체 탭 */}
+                  <button
+                    onClick={() => {
+                      setSelectedCategory(null);
+                      setSelectedSubCategory(null);
+                    }}
+                    className={`relative px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-between gap-2 ${
+                      !selectedCategory
+                        ? 'border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]'
+                        : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/20'
+                    }`}
                   >
-                    {product.imageUrl && (
-                      <img
-                        src={product.imageUrl}
-                        alt={product.name}
-                        className="w-full h-48 object-cover rounded-lg mb-3"
-                      />
-                    )}
-                    <div className="space-y-2">
-                      {/* Category Badges */}
-                      {(product.category_large || product.category_small) && (
-                        <div className="flex flex-wrap gap-1">
-                          {product.category_large && (
-                            <span className="px-2 py-0.5 bg-[#ccff00]/20 text-[#ccff00] text-xs rounded-full border border-[#ccff00]/30">
-                              {product.category_large}
-                            </span>
-                          )}
-                          {product.category_small && (
-                            <span className="px-2 py-0.5 bg-[#ccff00]/10 text-[#ccff00]/80 text-xs rounded-full border border-[#ccff00]/20">
-                              {product.category_small}
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <div className="space-y-1">
-                        {product.brand && (
-                          <div className="text-xs text-gray-400">{product.brand}</div>
+                    <span className="text-sm font-medium">전체</span>
+                    <span className="px-2 py-0.5 bg-white/20 text-white text-[10px] font-medium rounded-full">
+                      {categoryCounts.total}
+                    </span>
+                  </button>
+
+                  {/* 카테고리 탭들 */}
+                  {(Object.keys(FILTER_CATEGORIES) as CategoryLarge[]).map((category) => {
+                    const categoryName = category.replace(/[🥩💪🧃🍫🍬💊🐔]\s*/, '');
+                    const count = categoryCounts[category] || 0;
+                    const isSelected = selectedCategory === category;
+
+                    return (
+                      <button
+                        key={category}
+                        onClick={() => {
+                          if (selectedCategory === category) {
+                            setSelectedCategory(null);
+                            setSelectedSubCategory(null);
+                          } else {
+                            setSelectedCategory(category);
+                            setSelectedSubCategory('전체');
+                          }
+                        }}
+                        className={`relative px-4 py-3 rounded-lg border-2 transition-all flex items-center justify-between gap-2 ${
+                          isSelected
+                            ? 'border-[#ccff00] bg-[#ccff00]/10 text-[#ccff00]'
+                            : 'border-white/10 bg-white/5 text-gray-300 hover:border-white/20'
+                        }`}
+                      >
+                        <span className="text-sm font-medium">{category}</span>
+                        <span
+                          className={`px-2 py-0.5 text-[10px] font-medium rounded-full ${
+                            isSelected
+                              ? 'bg-[#ccff00]/30 text-[#ccff00]'
+                              : 'bg-white/20 text-white'
+                          }`}
+                        >
+                          {count}
+                        </span>
+                        {category === '🐔 닭가슴살' && (
+                          <span className="absolute -top-1 -right-1 px-1.5 py-0.5 bg-orange-500 text-white text-[10px] font-bold rounded border border-orange-400">
+                            New
+                          </span>
                         )}
-                        <div className="font-semibold text-[#ccff00]">{product.name}</div>
-                        {product.flavor && <div className="text-sm text-gray-300">{product.flavor}</div>}
-                        {product.weight && <div className="text-xs text-gray-400">{product.weight}</div>}
-                        {product.protein !== undefined && (
-                          <div className="text-xs text-gray-400">단백질: {product.protein}g</div>
-                        )}
-                      </div>
-                    </div>
-                    <RippleButton
-                      onClick={() => deleteProduct(product.id)}
-                      className="mt-3 w-full px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 border border-red-600/50 rounded-lg text-sm transition-all flex items-center justify-center gap-2 text-red-400"
+                      </button>
+                    );
+                  })}
+        </div>
+
+                {/* 2단: 소분류 칩 필터 */}
+                <AnimatePresence>
+                  {selectedCategory && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-4 pt-4 border-t border-white/10"
                     >
-                      <Trash2 className="w-4 h-4" />
-                      삭제
-                    </RippleButton>
-                  </motion.div>
-                ))}
+                      <div className="flex flex-wrap gap-2">
+                        {FILTER_CATEGORIES[selectedCategory].map((subCategory) => (
+                          <button
+                            key={subCategory}
+                            onClick={() => setSelectedSubCategory(subCategory)}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all ${
+                              selectedSubCategory === subCategory
+                                ? 'bg-[#ccff00] text-black'
+                                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+                            }`}
+                          >
+                            {subCategory}
+                          </button>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
 
-              {products.length === 0 && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-center py-12 text-gray-400"
-                >
-                  등록된 상품이 없습니다. 이미지를 붙여넣어 추가하세요.
-                </motion.div>
-              )}
+              {/* 뷰 모드 토글 버튼 */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex items-center justify-end gap-2"
+              >
+                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg p-1 flex gap-1">
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-2 rounded transition-all ${
+                      viewMode === 'grid'
+                        ? 'bg-[#ccff00] text-black'
+                        : 'text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <LayoutGrid className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`p-2 rounded transition-all ${
+                      viewMode === 'list'
+                        ? 'bg-[#ccff00] text-black'
+                        : 'text-gray-400 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <List className="w-5 h-5" />
+                  </button>
+                </div>
+              </motion.div>
+
+              {/* 필터링된 상품 리스트 */}
+              {(() => {
+                const filteredProducts = products.filter((product) => {
+                  // 대분류 필터
+                  if (selectedCategory) {
+                    const normalizedCategoryName = normalizeCategoryName(selectedCategory);
+                    const productCategory = (product.category_large || '').trim();
+                    if (productCategory !== normalizedCategoryName) {
+                      return false;
+                    }
+                  }
+
+                  // 소분류 필터
+                  if (selectedSubCategory && selectedSubCategory !== '전체') {
+                    const productSubCategory = (product.category_small || '').trim();
+                    if (productSubCategory !== selectedSubCategory.trim()) {
+                      return false;
+                    }
+                  }
+
+                  return true;
+                });
+
+                return (
+                  <>
+                    {viewMode === 'grid' ? (
+                      <div className="min-h-screen">
+                        <VirtuosoGrid
+                          totalCount={filteredProducts.length}
+                          data={filteredProducts}
+                          useWindowScroll
+                          overscan={2000}
+                          itemContent={(index, product) => (
+                            <ProductCard
+                              key={product.id}
+                              product={product}
+                              onDoubleClick={handleProductDoubleClick}
+                              onDelete={deleteProduct}
+                            />
+                          )}
+                          components={{
+                            List: GridList,
+                          }}
+                          style={{ height: 'auto', minHeight: '400px' }}
+                        />
+                      </div>
+                    ) : (
+                      // List 뷰
+                      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl overflow-hidden">
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="border-b border-white/10">
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400">이미지</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400">브랜드</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400">상품명</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400">맛</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400">용량</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400">카테고리</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-400">작업</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredProducts.map((product) => (
+                                <motion.tr
+                                  key={product.id}
+                                  initial={{ opacity: 0 }}
+                                  animate={{ opacity: 1 }}
+                                  onDoubleClick={() => handleProductDoubleClick(product)}
+                                  className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
+                                  title="더블 클릭하여 수정"
+                                >
+                                  <td className="px-4 py-3">
+                                    {product.imageUrl ? (
+                                      <div className="w-10 h-10 bg-black/20 rounded-lg overflow-hidden flex items-center justify-center group/thumb">
+                                        <img
+                                          src={product.imageUrl}
+                                          alt={product.name}
+                                          className="w-full h-full object-contain group-hover/thumb:scale-110 transition-transform"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="w-10 h-10 bg-black/20 rounded-lg flex items-center justify-center">
+                                        <Package className="w-5 h-5 text-gray-500" />
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-300">{product.brand || '-'}</td>
+                                  <td className="px-4 py-3">
+                                    <div className="font-semibold text-[#ccff00]">{product.name}</div>
+                                  </td>
+                                  <td className="px-4 py-3 text-sm text-gray-300">{product.flavor || '-'}</td>
+                                  <td className="px-4 py-3 text-sm text-gray-300">{product.weight || '-'}</td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex flex-wrap gap-1">
+                                      {product.category_large && (
+                                        <span className="px-2 py-0.5 bg-[#ccff00]/20 text-[#ccff00] text-xs rounded-full">
+                                          {product.category_large}
+                                        </span>
+                                      )}
+                                      {product.category_small && (
+                                        <span className="px-2 py-0.5 bg-[#ccff00]/10 text-[#ccff00]/80 text-xs rounded-full">
+                                          {product.category_small}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <RippleButton
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteProduct(product.id);
+                                      }}
+                                      className="px-3 py-1.5 bg-red-600/20 hover:bg-red-600/30 border border-red-600/50 rounded-lg text-sm transition-all flex items-center gap-2 text-red-400"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </RippleButton>
+                                  </td>
+                                </motion.tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {filteredProducts.length === 0 && (
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className="text-center py-12 text-gray-400"
+                      >
+                        등록된 상품이 없습니다. 이미지를 붙여넣어 추가하세요.
+                      </motion.div>
+                    )}
+                  </>
+                );
+              })()}
             </motion.div>
           )}
 
@@ -1307,14 +1838,18 @@ export default function Home() {
                   className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
                 >
                   {cGroupImages.map((img, idx) => (
-                    <motion.img
+                    <motion.div
                       key={idx}
-                      src={img}
-                      alt={`Upload ${idx + 1}`}
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="w-full h-48 object-cover rounded-xl border border-white/10"
-                    />
+                      className="w-full h-48 bg-black/20 rounded-xl border border-white/10 p-2 flex items-center justify-center"
+                    >
+                      <img
+                        src={img}
+                        alt={`Upload ${idx + 1}`}
+                        className="w-full h-full object-contain rounded-xl"
+                      />
+                    </motion.div>
                   ))}
                 </motion.div>
               )}

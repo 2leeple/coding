@@ -40,3 +40,12 @@ body {
 .delay-2000 {
   animation-delay: 2s;
 }
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
