@@ -14,6 +14,8 @@ import {
   Upload,
   Sparkles,
   Loader2,
+  X,
+  Edit,
 } from 'lucide-react';
 
 type Tab = 'A' | 'B' | 'C';
@@ -269,6 +271,275 @@ const Toast = ({
   );
 };
 
+// Edit Product Modal Component
+const EditProductModal = ({
+  product,
+  isOpen,
+  onClose,
+  onSave,
+}: {
+  product: Product | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSave: (updatedProduct: Partial<Product>) => Promise<void>;
+}) => {
+  const [formData, setFormData] = useState<Partial<Product>>({});
+  const [isSaving, setIsSaving] = useState(false);
+  const [isHoveringImage, setIsHoveringImage] = useState(false);
+  const imageContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (product) {
+      setFormData({
+        brand: product.brand || '',
+        name: product.name || '',
+        category_large: product.category_large || '',
+        category_small: product.category_small || '',
+        flavor: product.flavor || '',
+        weight: product.weight || '',
+        imageUrl: product.imageUrl || '',
+      });
+    }
+  }, [product]);
+
+
+  useEffect(() => {
+    if (isOpen) {
+      const handlePaste = async (e: ClipboardEvent) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        
+        const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
+        if (imageItems.length === 0) return;
+
+        try {
+          const file = imageItems[0].getAsFile();
+          if (!file) return;
+
+          const reader = new FileReader();
+          reader.onload = async (e) => {
+            const dataUrl = e.target?.result as string;
+            // 이미지 해상도 보장 (최소 가로 1000px)
+            const resizedDataUrl = await ensureImageResolution(dataUrl, 1000);
+            setFormData((prev) => ({ ...prev, imageUrl: resizedDataUrl }));
+          };
+          reader.readAsDataURL(file);
+        } catch (error) {
+          console.error('Failed to process image:', error);
+        }
+      };
+      
+      window.addEventListener('paste', handlePaste);
+      return () => window.removeEventListener('paste', handlePaste);
+    }
+  }, [isOpen]);
+
+  const handleSave = async () => {
+    if (!product) return;
+    
+    setIsSaving(true);
+    try {
+      await onSave(formData);
+      onClose();
+    } catch (error) {
+      console.error('Failed to save product:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isOpen || !product) return null;
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          {/* Backdrop */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+          />
+          
+          {/* Modal */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-6 w-full max-w-2xl shadow-2xl">
+              {/* Header */}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <Edit className="w-6 h-6 text-[#ccff00]" />
+                  <h2 className="text-2xl font-bold text-[#ccff00]">상품 수정</h2>
+                </div>
+                <button
+                  onClick={onClose}
+                  className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-400" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <div className="space-y-4">
+                {/* 이미지 영역 */}
+                <div
+                  ref={imageContainerRef}
+                  onMouseEnter={() => setIsHoveringImage(true)}
+                  onMouseLeave={() => setIsHoveringImage(false)}
+                  onPaste={handleImagePaste}
+                  className="relative w-full h-64 rounded-lg border-2 border-dashed border-white/20 bg-white/5 overflow-hidden cursor-pointer transition-all hover:border-[#ccff00]/50"
+                  tabIndex={0}
+                >
+                  {formData.imageUrl ? (
+                    <>
+                      <img
+                        src={formData.imageUrl}
+                        alt={product.name}
+                        className="w-full h-full object-cover"
+                      />
+                      {isHoveringImage && (
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          className="absolute inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center"
+                        >
+                          <p className="text-white font-medium text-center px-4">
+                            클릭 후 Ctrl+V로 이미지 변경
+                          </p>
+                        </motion.div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center">
+                      <div className="text-center">
+                        <Upload className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-400 text-sm">이미지 없음</p>
+                        <p className="text-gray-500 text-xs mt-1">Ctrl+V로 이미지 붙여넣기</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 상품명 - 가장 눈에 띄게 */}
+                <div>
+                  <label className="block text-sm font-semibold text-[#ccff00] mb-2">
+                    상품명 *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.name || ''}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white text-lg font-medium focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                    placeholder="상품명을 입력하세요"
+                  />
+                </div>
+
+                {/* 브랜드 */}
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">브랜드</label>
+                  <input
+                    type="text"
+                    value={formData.brand || ''}
+                    onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                    placeholder="브랜드명"
+                  />
+                </div>
+
+                {/* 대분류 / 소분류 - 한 줄에 나란히 */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">대분류</label>
+                    <input
+                      type="text"
+                      value={formData.category_large || ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, category_large: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      placeholder="대분류"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm text-gray-400 mb-2">소분류</label>
+                    <input
+                      type="text"
+                      value={formData.category_small || ''}
+                      onChange={(e) =>
+                        setFormData({ ...formData, category_small: e.target.value })
+                      }
+                      className="w-full px-4 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      placeholder="소분류"
+                    />
+                  </div>
+                </div>
+
+                {/* 맛 */}
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">맛</label>
+                  <input
+                    type="text"
+                    value={formData.flavor || ''}
+                    onChange={(e) => setFormData({ ...formData, flavor: e.target.value })}
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                    placeholder="맛 (예: 쿠키앤크림)"
+                  />
+                </div>
+
+                {/* 용량 */}
+                <div>
+                  <label className="block text-sm text-gray-400 mb-2">용량</label>
+                  <input
+                    type="text"
+                    value={formData.weight || ''}
+                    onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
+                    className="w-full px-4 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                    placeholder="용량 (예: 1.81kg)"
+                  />
+                </div>
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-3 mt-6">
+                <RippleButton
+                  onClick={onClose}
+                  className="flex-1 px-4 py-3 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white font-semibold transition-all"
+                >
+                  취소
+                </RippleButton>
+                <RippleButton
+                  onClick={handleSave}
+                  disabled={isSaving || !formData.name}
+                  className="flex-1 px-4 py-3 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_20px_rgba(204,255,0,0.5)] hover:shadow-[0_0_30px_rgba(204,255,0,0.7)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      저장 중...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-5 h-5" />
+                      저장
+                    </>
+                  )}
+                </RippleButton>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  );
+};
+
 export default function Home() {
   const [apiKey, setApiKey] = useState<string>('');
   const [activeTab, setActiveTab] = useState<Tab>('A');
@@ -279,6 +550,8 @@ export default function Home() {
   const [cGroupImages, setCGroupImages] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string>('');
   const [showToast, setShowToast] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -661,6 +934,39 @@ export default function Home() {
     }
   };
 
+  const updateProduct = async (updatedData: Partial<Product>) => {
+    if (!editingProduct) return;
+
+    try {
+      const res = await fetch('/api/products', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: editingProduct.id,
+          ...updatedData,
+        }),
+      });
+
+      if (res.ok) {
+        await loadProducts();
+        setToastMessage('✅ 상품이 수정되었습니다!');
+        setShowToast(true);
+      } else {
+        throw new Error('Failed to update product');
+      }
+    } catch (error) {
+      console.error('Failed to update product:', error);
+      setToastMessage('❌ 상품 수정 중 오류가 발생했습니다.');
+      setShowToast(true);
+      throw error;
+    }
+  };
+
+  const handleProductDoubleClick = (product: Product) => {
+    setEditingProduct(product);
+    setIsEditModalOpen(true);
+  };
+
   const deleteProduct = async (id: string) => {
     if (!confirm('정말 삭제하시겠습니까?')) return;
 
@@ -821,7 +1127,9 @@ export default function Home() {
                     key={product.id}
                     variants={itemVariants}
                     whileHover={{ scale: 1.05, y: -5 }}
+                    onDoubleClick={() => handleProductDoubleClick(product)}
                     className="group bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 hover:border-[#ccff00] hover:shadow-[0_0_20px_rgba(204,255,0,0.3)] transition-all cursor-pointer"
+                    title="더블 클릭하여 수정"
                   >
                     {product.imageUrl && (
                       <img
@@ -933,7 +1241,7 @@ export default function Home() {
                       <div className="font-semibold text-[#ccff00]">{product.name}</div>
                       {product.flavor && <div className="text-sm text-gray-300">{product.flavor}</div>}
                       {product.weight && <div className="text-xs text-gray-400">{product.weight}</div>}
-                    </div>
+        </div>
                   </motion.div>
                 ))}
               </motion.div>
@@ -1119,13 +1427,24 @@ export default function Home() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+        </div>
 
       {/* Toast Notification */}
       <Toast
         message={toastMessage}
         isVisible={showToast}
         onClose={() => setShowToast(false)}
+      />
+
+      {/* Edit Product Modal */}
+      <EditProductModal
+        product={editingProduct}
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingProduct(null);
+        }}
+        onSave={updateProduct}
       />
     </div>
   );

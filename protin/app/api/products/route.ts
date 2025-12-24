@@ -66,6 +66,37 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PUT(request: NextRequest) {
+  try {
+    const { id, ...updateData } = await request.json();
+    
+    if (!id) {
+      return NextResponse.json({ error: 'Product ID is required' }, { status: 400 });
+    }
+    
+    const db = await readDb();
+    const productIndex = db.products.findIndex((p) => p.id === id);
+    
+    if (productIndex === -1) {
+      return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+    }
+    
+    // 기존 데이터 유지하면서 업데이트
+    db.products[productIndex] = {
+      ...db.products[productIndex],
+      ...updateData,
+      id, // id는 변경 불가
+      createdAt: db.products[productIndex].createdAt, // 생성일은 유지
+    };
+    
+    await writeDb(db);
+    
+    return NextResponse.json(db.products[productIndex]);
+  } catch (error) {
+    return NextResponse.json({ error: 'Failed to update product' }, { status: 500 });
+  }
+}
+
 export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
