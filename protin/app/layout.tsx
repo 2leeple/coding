@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Protin Manager",
+  title: "Protein Manager",
   description: "단백질 보충제 관리 앱",
 };
 

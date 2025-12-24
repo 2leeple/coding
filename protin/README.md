@@ -1,4 +1,4 @@
-# Protin Manager
+# Protein Manager
 
 단백질 보충제 관리 앱 - Next.js (App Router) 기반
 

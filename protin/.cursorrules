@@ -1,0 +1,54 @@
+# Project: Protein Manager (Next.js App)
+
+## 1. Tech Stack & Environment
+- **Framework:** Next.js 14+ (App Router)
+- **Language:** TypeScript
+- **Styling:** Tailwind CSS (clsx, tailwind-merge)
+- **State Management:** SWR (Client-side fetching)
+- **Animation:** Framer Motion
+- **Performance:** react-virtuoso (Virtual Scrolling)
+- **Image Processing:** - `browser-image-compression` (Optimization)
+  - `@imgly/background-removal-js` (Auto BG Removal)
+- **Icons:** Lucide React
+- **AI:** Google Gemini Multimodal (Vision)
+
+## 2. Visual Identity (Design System)
+- **Theme:** Dark Mode (Background: `zinc-950`)
+- **Accent Color:** Neon Green (`#ccff00`)
+- **Style:** Glassmorphism (Backdrop blur, translucent borders `border-white/10`)
+- **Layout:** Responsive Grid (Compact Mode: 2 cols mobile, up to 5 cols desktop)
+- **Feedback:** Toast notifications (react-hot-toast), Skeleton UI, Loading Spinners.
+
+## 3. Core Features & Logic Rules
+
+### A Group (My Inventory)
+- **Virtual Scrolling:**
+  - MUST use `VirtuosoGrid` with `useWindowScroll`.
+  - `overscan` set to **2000** to prevent blank spaces.
+  - `List` component MUST use `forwardRef` to pass dimensions correctly.
+- **Filtering System:**
+  - 2-Depth Structure: Large Category -> Small Category.
+  - **Text Normalization:** Category filtering logic MUST strip emojis (e.g., "🥩") and trim whitespace before comparing strings.
+- **Product Card:**
+  - **Compact Mode:** Minimal padding (`p-3`), small fonts, limited line clamp.
+  - **Display:** Immediate rendering (No fade-in opacity 0) to prevent "invisible card" bugs.
+
+### B Group (Market Research & Analysis)
+- **Input Layout (Split View):**
+  - **Left (Product Image):** Supports URL & Paste. **MUST** execute `removeBackground` (Auto BG Removal).
+  - **Right (Nutrition Label):** Supports Paste only. **MUST NOT** remove background (Keep text clear).
+- **Backend Proxy:**
+  - External Image URLs MUST flow through `/api/image-proxy` to bypass CORS.
+  - Logic: Fetch Blob -> Remove BG (if product) -> Compress -> Preview.
+- **URL Handling:**
+  - Auto-Clean: Truncate Coupang URLs after `vendorItemId` (remove tracking params like `traceId`, `q`, etc.).
+  - Auto-Protocol: Prepend `https:` if URL starts with `//`.
+- **Export Actions:**
+  - **Excel Copy:** Tab-separated values (`\t`) for direct spreadsheet pasting.
+  - **Save to Inventory:** Maps B-Group analysis data directly to A-Group `Product` schema.
+
+## 4. Coding Conventions
+- **Components:** Functional components with TypeScript interfaces.
+- **Naming:** `Product` (not `Protin`), `category_large`, `category_small`.
+- **Error Handling:** Always wrap `fetch` or image processing in `try-catch` with user-friendly Toast messages.
+- **Optimization:** Use `useMemo` for filtering/sorting expensive calculations.

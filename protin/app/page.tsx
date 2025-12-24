@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion';
 import { VirtuosoGrid } from 'react-virtuoso';
+import { Toaster, toast } from 'react-hot-toast';
 import {
   Save,
   Key,
@@ -357,8 +358,8 @@ const EditProductModal = ({
 
     if (imageItems.length === 0) return;
 
-    const file = imageItems[0].getAsFile();
-    if (!file) return;
+      const file = imageItems[0].getAsFile();
+      if (!file) return;
 
     // 공통 이미지 처리 함수 사용
     await processImage(file);
@@ -402,12 +403,12 @@ const EditProductModal = ({
       
       // 에러 발생 시 원본 이미지로 폴백
       try {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const dataUrl = e.target?.result as string;
-          const resizedDataUrl = await ensureImageResolution(dataUrl, 1000);
-          setFormData((prev) => ({ ...prev, imageUrl: resizedDataUrl }));
-        };
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const dataUrl = e.target?.result as string;
+        const resizedDataUrl = await ensureImageResolution(dataUrl, 1000);
+        setFormData((prev) => ({ ...prev, imageUrl: resizedDataUrl }));
+      };
         reader.readAsDataURL(fileOrBlob);
       } catch (fallbackError) {
         console.error('Failed to load original image:', fallbackError);
@@ -762,6 +763,74 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [bGroupResults, setBGroupResults] = useState<Product[]>([]);
+  // C그룹 검수 폼 데이터
+  const [cGroupFormData, setCGroupFormData] = useState<{
+    name: string;
+    link: string;
+    flavor: string;
+    amount: string;
+    category: string;
+    sub_category: string;
+    protein: string;
+    scoops: string;
+    sugar: string;
+    fat: string;
+    calorie: string;
+    gram: string;
+    total_carb: string;
+  }>({
+    name: '',
+    link: '',
+    flavor: '',
+    amount: '',
+    category: '',
+    sub_category: '',
+    protein: '',
+    scoops: '',
+    sugar: '',
+    fat: '',
+    calorie: '',
+    gram: '',
+    total_carb: '',
+  });
+  // C그룹 (상세분석) - 단일 상품 분석 상태
+  const [cGroupProductImages, setCGroupProductImages] = useState<string[]>([]);
+  const [cGroupNutritionImages, setCGroupNutritionImages] = useState<string[]>([]);
+  const [cGroupLinkInput, setCGroupLinkInput] = useState('');
+  const [cGroupImageUrlInput, setCGroupImageUrlInput] = useState('');
+  const [cGroupNutritionUrlInput, setCGroupNutritionUrlInput] = useState('');
+  const [isCAnalyzing, setIsCAnalyzing] = useState(false);
+  const [isCSaving, setIsCSaving] = useState(false);
+  const [cGroupSaved, setCGroupSaved] = useState(false);
+  const [cGroupRemovingBg, setCGroupRemovingBg] = useState<Set<number>>(new Set());
+  const [cGroupFocusedArea, setCGroupFocusedArea] = useState<'product' | 'nutrition' | null>(null);
+  const cGroupProductFileInputRef = useRef<HTMLInputElement>(null);
+  const cGroupNutritionFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // B그룹 (시장조사) - 리스트 스캔 모드 상태
+  const [bGroupListImages, setBGroupListImages] = useState<string[]>([]);
+  const [bGroupBrandFilter, setBGroupBrandFilter] = useState<string>('');
+  const [bGroupBundleExclude, setBGroupBundleExclude] = useState<number>(2);
+  const [bGroupListResults, setBGroupListResults] = useState<Array<{
+    brand: string;
+    name: string;
+    flavor?: string;
+    weight_g?: number;
+    is_snack: boolean;
+    bundle_count: number;
+    status: 'new' | 'duplicate' | 'bundle' | 'brand' | 'snack';
+    excludeReason?: string;
+  }>>([]);
+  const [bGroupListExcluded, setBGroupListExcluded] = useState<Array<{
+    brand: string;
+    name: string;
+    flavor?: string;
+    weight_g?: number;
+    reason: string;
+    type: 'BRAND' | 'BUNDLE' | 'DUPLICATE';
+  }>>([]);
+  const [bGroupExcludedFilter, setBGroupExcludedFilter] = useState<'ALL' | 'BRAND' | 'BUNDLE' | 'DUPLICATE'>('ALL');
+  const [isBGroupListAnalyzing, setIsBGroupListAnalyzing] = useState(false);
   const [cGroupData, setCGroupData] = useState<Partial<Product>>({});
   const [cGroupImages, setCGroupImages] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string>('');
@@ -805,7 +874,7 @@ export default function Home() {
   };
 
   const handlePaste = async (e: React.ClipboardEvent) => {
-    if (activeTab !== 'A' && activeTab !== 'B') return;
+    if (activeTab !== 'A') return;
 
     const items = e.clipboardData.items;
     const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
@@ -839,8 +908,6 @@ export default function Home() {
       if (activeTab === 'A') {
         // A그룹: 대량 등록 모드
         await processBulkProductsToA(imageDataUrls);
-      } else if (activeTab === 'B') {
-        await processBulkProducts(imageDataUrls);
       }
     } catch (error) {
       console.error('Failed to process images:', error);
@@ -1016,21 +1083,313 @@ export default function Home() {
     }
   };
 
-  const processBulkProducts = async (imageDataUrls: string[]) => {
+  // URL 정제 함수 (vendorItemId=숫자까지만 남기기)
+  const cleanCoupangUrl = (url: string): string => {
+    if (!url) return '';
+    
+    const trimmed = url.trim();
+    const match = trimmed.match(/(.*vendorItemId=\d+)/);
+    
+    if (match) {
+      return match[1];
+    }
+    
+    return trimmed;
+  };
+
+
+  // C그룹 상품 이미지 URL 추가 (자동 배경 제거)
+  const handleCGroupImageUrlAdd = async () => {
+    if (!cGroupImageUrlInput.trim()) return;
+
+    try {
+      // 1. 이미지 가져오기
+      const encodedUrl = encodeURIComponent(cGroupImageUrlInput.trim());
+      const response = await fetch(`/api/image-proxy?url=${encodedUrl}`);
+
+      if (!response.ok) {
+        toast.error('이미지를 불러올 수 없습니다.');
+        return;
+      }
+
+      const blob = await response.blob();
+      const tempIndex = cGroupProductImages.length;
+      
+      // 2. 먼저 원본 이미지를 미리보기에 추가 (임시)
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const originalDataUrl = e.target?.result as string;
+        
+        // 원본 이미지 추가
+        setCGroupProductImages((prev) => [...prev, originalDataUrl]);
+        setCGroupImageUrlInput('');
+        
+        // 배경 제거 시작 (로딩 상태 표시)
+        setCGroupRemovingBg((prev) => new Set(prev).add(tempIndex));
+        
+        try {
+          // 3. Blob을 File로 변환
+          const file = new File([blob], 'image.png', { type: blob.type || 'image/png' });
+          
+          // 4. 배경 제거 유틸리티 함수 실행
+          const { removeBackground, blobToDataURL } = await import('../utils/imageProcessor');
+          const processedBlob = await removeBackground(file);
+          
+          // 5. 배경 제거된 이미지를 Base64로 변환
+          const processedDataUrl = await blobToDataURL(processedBlob);
+          
+          // 6. 원본 이미지를 배경 제거된 이미지로 교체
+          setCGroupProductImages((prev) => {
+            const newImages = [...prev];
+            newImages[tempIndex] = processedDataUrl;
+            return newImages;
+          });
+          
+          toast.success('배경이 제거된 이미지가 추가되었습니다!');
+        } catch (error) {
+          console.error('Failed to remove background:', error);
+          toast.error('배경 제거에 실패했습니다. 원본 이미지를 사용합니다.');
+        } finally {
+          // 로딩 상태 해제
+          setCGroupRemovingBg((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(tempIndex);
+            return newSet;
+          });
+        }
+      };
+      reader.readAsDataURL(blob);
+    } catch (error) {
+      console.error('Failed to load image from URL:', error);
+      toast.error('이미지 URL을 확인해주세요.');
+    }
+  };
+
+  // C그룹 상품 이미지 파일 선택 (배경 제거)
+  const handleCGroupProductFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    for (let idx = 0; idx < files.length; idx++) {
+      const file = files[idx];
+      const currentIndex = cGroupProductImages.length + idx;
+      
+      // 먼저 원본 이미지 추가
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const originalDataUrl = e.target?.result as string;
+        setCGroupProductImages((prev) => [...prev, originalDataUrl]);
+        
+        // 배경 제거 시작
+        setCGroupRemovingBg((prev) => new Set(prev).add(currentIndex));
+        
+        try {
+          const { removeBackground, blobToDataURL } = await import('../utils/imageProcessor');
+          const processedBlob = await removeBackground(file);
+          const processedDataUrl = await blobToDataURL(processedBlob);
+          
+          // 원본을 배경 제거된 이미지로 교체
+          setCGroupProductImages((prev) => {
+            const newImages = [...prev];
+            newImages[currentIndex] = processedDataUrl;
+            return newImages;
+          });
+        } catch (error) {
+          console.error('Failed to remove background:', error);
+        } finally {
+          setCGroupRemovingBg((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(currentIndex);
+            return newSet;
+          });
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // C그룹 성분표 이미지 URL 추가 (배경 제거 안 함)
+  const handleCGroupNutritionUrlAdd = async () => {
+    if (!cGroupNutritionUrlInput.trim()) return;
+
+    try {
+      // 1. 이미지 가져오기
+      const encodedUrl = encodeURIComponent(cGroupNutritionUrlInput.trim());
+      const response = await fetch(`/api/image-proxy?url=${encodedUrl}`);
+
+      if (!response.ok) {
+        toast.error('이미지를 불러올 수 없습니다.');
+        return;
+      }
+
+      const blob = await response.blob();
+      
+      // 2. Blob을 Base64로 변환 (배경 제거 없이 원본 그대로)
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string;
+        setCGroupNutritionImages((prev) => [...prev, dataUrl]);
+        setCGroupNutritionUrlInput('');
+        toast.success('성분표 이미지가 추가되었습니다!');
+      };
+      reader.readAsDataURL(blob);
+    } catch (error) {
+      console.error('Failed to load image from URL:', error);
+      toast.error('이미지 URL을 확인해주세요.');
+    }
+  };
+
+  // C그룹 성분표 이미지 파일 선택 (배경 제거 안 함)
+  const handleCGroupNutritionFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+
+    const readers = files.map((file) => {
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          resolve(e.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(readers).then((imageDataUrls) => {
+      setCGroupNutritionImages((prev) => [...prev, ...imageDataUrls]);
+    });
+  };
+
+  // C그룹 상품 이미지 Ctrl+V 붙여넣기 (배경 제거)
+  const handleCGroupProductPaste = async (e: React.ClipboardEvent) => {
+    if (activeTab !== 'C' || cGroupFocusedArea !== 'product') return;
+
+    const items = e.clipboardData.items;
+    const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
+
+    if (imageItems.length === 0) return;
+
+    e.preventDefault();
+
+    for (let idx = 0; idx < imageItems.length; idx++) {
+      const item = imageItems[idx];
+      const file = item.getAsFile();
+      if (!file) continue;
+
+      const currentIndex = cGroupProductImages.length + idx;
+      
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const originalDataUrl = e.target?.result as string;
+        setCGroupProductImages((prev) => [...prev, originalDataUrl]);
+        
+        // 배경 제거 시작
+        setCGroupRemovingBg((prev) => new Set(prev).add(currentIndex));
+        
+        try {
+          const { removeBackground, blobToDataURL } = await import('../utils/imageProcessor');
+          const processedBlob = await removeBackground(file);
+          const processedDataUrl = await blobToDataURL(processedBlob);
+          
+          setCGroupProductImages((prev) => {
+            const newImages = [...prev];
+            newImages[currentIndex] = processedDataUrl;
+            return newImages;
+          });
+        } catch (error) {
+          console.error('Failed to remove background:', error);
+        } finally {
+          setCGroupRemovingBg((prev) => {
+            const newSet = new Set(prev);
+            newSet.delete(currentIndex);
+            return newSet;
+          });
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+
+    toast.success(`${imageItems.length}개 상품 이미지가 추가되었습니다.`);
+  };
+
+  // C그룹 성분표 Ctrl+V 붙여넣기 (배경 제거 안 함)
+  const handleCGroupNutritionPaste = async (e: React.ClipboardEvent) => {
+    if (activeTab !== 'C' || cGroupFocusedArea !== 'nutrition') return;
+
+    const items = e.clipboardData.items;
+    const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
+
+    if (imageItems.length === 0) return;
+
+    e.preventDefault();
+
+    const readers = imageItems.map((item) => {
+      return new Promise<string>((resolve) => {
+        const file = item.getAsFile();
+        if (!file) {
+          resolve('');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          resolve(e.target?.result as string);
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(readers).then((imageDataUrls) => {
+      const validUrls = imageDataUrls.filter(Boolean);
+      if (validUrls.length > 0) {
+        setCGroupNutritionImages((prev) => [...prev, ...validUrls]);
+        toast.success(`${validUrls.length}개 성분표가 추가되었습니다.`);
+      }
+    });
+  };
+
+  // C그룹 분석 시작
+  const handleCAnalyze = async () => {
     if (!apiKey) {
-      alert('Gemini API Key를 먼저 입력해주세요.');
+      toast.error('Gemini API Key를 먼저 입력해주세요.');
       return;
     }
 
-    const prompt = `이미지 내 모든 상품의 브랜드, 이름, 맛, 무게를 추출해주세요. 가격이나 배송일은 제외해주세요. 다음 형식의 JSON 배열로 응답해주세요:
-[
-  {
-    "brand": "브랜드명",
-    "name": "상품명",
+    if (cGroupProductImages.length === 0 && cGroupNutritionImages.length === 0) {
+      toast.error('이미지를 업로드해주세요.');
+      return;
+    }
+
+    setIsCAnalyzing(true);
+
+    // 두 그룹의 이미지를 합치기 (상품 이미지 먼저, 성분표 나중)
+    const allImages = [...cGroupProductImages, ...cGroupNutritionImages];
+
+    const prompt = `제공된 이미지들을 두 그룹으로 구분하여 분석하라:
+
+**첫 번째 그룹 (Product Appearance):**
+- 상품의 앞면, 뒷면, 포장 이미지
+- 제품명, 브랜드, 맛, 용량 등의 정보를 추출하라
+
+**두 번째 그룹 (Nutrition Facts Label):**
+- 영양성분표, 함량표
+- 특히 영양성분표(Nutrition Facts)를 꼼꼼히 읽어서 protein, sugar, fat, calorie, total_carb 수치를 숫자만 추출하라
+- gram은 '1 scoop (30g)' 같은 표기에서 괄호 안의 숫자를 의미한다
+- scoops는 'Total Servings' 또는 전체 용량 나누기 1회 용량을 계산해서 넣어라
+
+다음 형식의 JSON으로 응답하라:
+{
+  "name": "제품명",
     "flavor": "맛",
-    "weight": "무게"
-  }
-]`;
+  "amount": "용량 (예: 2kg)",
+  "category": "대분류",
+  "sub_category": "소분류",
+  "protein": 숫자 (단백질 g),
+  "scoops": 숫자 (총 서빙 횟수),
+  "sugar": 숫자 (당류 g),
+  "fat": 숫자 (지방 g),
+  "calorie": 숫자 (칼로리 kcal),
+  "gram": 숫자 (1회 섭취량 g),
+  "total_carb": 숫자 (총 탄수화물 g)
+}`;
 
     try {
       const res = await fetch('/api/gemini', {
@@ -1038,48 +1397,535 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           apiKey,
-          images: imageDataUrls,
+          images: allImages,
           prompt,
-          mode: 'bulk',
+          mode: 'detailed',
         }),
       });
 
       const data = await res.json();
-      let extractedProducts: Partial<Product>[] = [];
+      let extractedData: any = {};
 
       if (data.raw) {
         const parsed = safeParseJSON(data.text);
-        if (Array.isArray(parsed)) {
-          extractedProducts = parsed;
+        if (parsed) {
+          extractedData = parsed;
         }
-      } else if (Array.isArray(data)) {
-        extractedProducts = data;
-      } else if (data.products) {
-        extractedProducts = data.products;
+      } else {
+        extractedData = data;
       }
 
-      const filteredProducts = extractedProducts.filter((extracted) => {
-        return !products.some(
-          (existing) =>
-            existing.brand === extracted.brand &&
-            existing.name === extracted.name &&
-            existing.flavor === extracted.flavor
-        );
+      // 폼 데이터 업데이트
+      setCGroupFormData({
+        name: extractedData.name || '',
+        link: cleanCoupangUrl(cGroupLinkInput), // 정제된 URL
+        flavor: extractedData.flavor || '',
+        amount: extractedData.amount || '',
+        category: extractedData.category || '',
+        sub_category: extractedData.sub_category || '',
+        protein: extractedData.protein?.toString() || '',
+        scoops: extractedData.scoops?.toString() || '',
+        sugar: extractedData.sugar?.toString() || '',
+        fat: extractedData.fat?.toString() || '',
+        calorie: extractedData.calorie?.toString() || '',
+        gram: extractedData.gram?.toString() || '',
+        total_carb: extractedData.total_carb?.toString() || '',
       });
 
-      setBGroupResults(filteredProducts.map((p) => ({ ...p, id: uuidv4() } as Product)));
+      setCGroupSaved(false); // 분석 완료 시 저장 상태 초기화
+      toast.success('분석이 완료되었습니다!');
     } catch (error) {
-      console.error('Failed to process bulk products:', error);
-      alert('대량 상품 처리 중 오류가 발생했습니다.');
+      console.error('Failed to analyze:', error);
+      toast.error('분석 중 오류가 발생했습니다.');
+    } finally {
+      setIsCAnalyzing(false);
     }
   };
 
-  const copyToCSV = () => {
-    const productNames = bGroupResults.map((p) => p.name).join('\n');
-    navigator.clipboard.writeText(productNames).then(() => {
-      alert('상품명이 클립보드에 복사되었습니다.');
+  // C그룹 데이터를 A그룹(보관함)에 저장
+  const handleCSaveToA = async () => {
+    if (!cGroupFormData.name) {
+      toast.error('제품명을 입력해주세요.');
+      return;
+    }
+
+    setIsCSaving(true);
+
+    try {
+      // 메인 이미지 가져오기 (첫 번째 상품 이미지 우선, 없으면 성분표)
+      let imageUrl = '';
+      if (cGroupProductImages.length > 0) {
+        imageUrl = await ensureImageResolution(cGroupProductImages[0], 1000);
+      } else if (cGroupNutritionImages.length > 0) {
+        imageUrl = await ensureImageResolution(cGroupNutritionImages[0], 1000);
+      }
+
+      // C그룹 데이터를 A그룹 Product 스키마로 변환
+      const newProduct: Omit<Product, 'id' | 'createdAt'> = {
+        name: cGroupFormData.name,
+        brand: '', // C그룹에는 브랜드 필드가 없으므로 빈 문자열
+        flavor: cGroupFormData.flavor,
+        weight: cGroupFormData.amount,
+        category_large: cGroupFormData.category,
+        category_small: cGroupFormData.sub_category,
+        serving: cGroupFormData.gram ? `${cGroupFormData.gram}g` : undefined,
+        calories: cGroupFormData.calorie ? Number(cGroupFormData.calorie) : undefined,
+        carbs: cGroupFormData.total_carb ? Number(cGroupFormData.total_carb) : undefined,
+        protein: cGroupFormData.protein ? Number(cGroupFormData.protein) : undefined,
+        fat: cGroupFormData.fat ? Number(cGroupFormData.fat) : undefined,
+        sugar: cGroupFormData.sugar ? Number(cGroupFormData.sugar) : undefined,
+        imageUrl: imageUrl,
+      };
+
+      // API를 통해 저장
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct),
+      });
+
+      if (res.ok) {
+        await loadProducts();
+        setCGroupSaved(true);
+        toast.success('보관함에 등록되었습니다!');
+      } else {
+        throw new Error('Failed to save product');
+      }
+    } catch (error) {
+      console.error('Failed to save to A group:', error);
+      toast.error('저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsCSaving(false);
+    }
+  };
+
+  // C그룹 엑셀용 복사 (탭으로 구분)
+  const copyCGroupToExcel = () => {
+    const fields = [
+      cGroupFormData.name,
+      cGroupFormData.link,
+      cGroupFormData.flavor,
+      cGroupFormData.amount,
+      cGroupFormData.category,
+      cGroupFormData.sub_category,
+      cGroupFormData.protein,
+      cGroupFormData.scoops,
+      cGroupFormData.sugar,
+      cGroupFormData.fat,
+      cGroupFormData.calorie,
+      cGroupFormData.gram,
+      cGroupFormData.total_carb,
+    ];
+
+    const tabSeparated = fields.join('\t');
+    navigator.clipboard.writeText(tabSeparated).then(() => {
+      toast.success('복사 완료! 엑셀에 붙여넣으세요.');
     });
   };
+
+  // 리스트 스캔 모드: 이미지 붙여넣기 (배열에 추가)
+  const handleBGroupListPaste = async (e: React.ClipboardEvent) => {
+    if (activeTab !== 'B') return;
+
+    const items = e.clipboardData.items;
+    const imageItems = Array.from(items).filter((item) => item.type.startsWith('image/'));
+
+    if (imageItems.length === 0) return;
+
+    e.preventDefault();
+
+    // 최대 5장까지만 허용
+    if (bGroupListImages.length >= 5) {
+      toast.error('최대 5장까지만 추가할 수 있습니다.');
+      return;
+    }
+
+    const file = imageItems[0].getAsFile();
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      setBGroupListImages((prev) => [...prev, dataUrl]);
+      toast.success(`리스트 이미지가 추가되었습니다. (${bGroupListImages.length + 1}/5)`);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // 리스트 스캔 모드: 이미지 개별 삭제
+  const handleBGroupListImageRemove = (index: number) => {
+    setBGroupListImages((prev) => prev.filter((_, i) => i !== index));
+    toast.success('이미지가 제거되었습니다.');
+  };
+
+  // 리스트 스캔 모드: 모든 이미지 지우기
+  const handleBGroupListImagesClear = () => {
+    setBGroupListImages([]);
+    setBGroupListResults([]);
+    setBGroupListExcluded([]);
+    toast.success('모든 이미지가 제거되었습니다.');
+  };
+
+  // 중량을 그램 단위로 변환하는 유틸리티 함수
+  const parseWeightToGrams = (weightStr: string | number | undefined): number | undefined => {
+    if (!weightStr) return undefined;
+    
+    const str = String(weightStr).toLowerCase().trim();
+    // kg 단위 추출
+    const kgMatch = str.match(/([\d.]+)\s*kg/);
+    if (kgMatch) {
+      return Math.round(parseFloat(kgMatch[1]) * 1000);
+    }
+    // g 단위 추출
+    const gMatch = str.match(/([\d.]+)\s*g(?!\w)/);
+    if (gMatch) {
+      return Math.round(parseFloat(gMatch[1]));
+    }
+    // 숫자만 있는 경우 (기본적으로 g로 가정)
+    const numMatch = str.match(/([\d.]+)/);
+    if (numMatch) {
+      const num = parseFloat(numMatch[1]);
+      // 1000 이상이면 kg로 가정
+      return num >= 1000 ? Math.round(num) : Math.round(num);
+    }
+    return undefined;
+  };
+
+  // 리스트 스캔 모드: 분석 및 필터링
+  const handleBGroupListAnalyze = async () => {
+    if (!apiKey) {
+      toast.error('Gemini API Key를 먼저 입력해주세요.');
+      return;
+    }
+
+    if (bGroupListImages.length === 0) {
+      toast.error('리스트 이미지를 업로드해주세요.');
+      return;
+    }
+
+    setIsBGroupListAnalyzing(true);
+    setBGroupListResults([]);
+    setBGroupListExcluded([]);
+
+    const prompt = `제공된 여러 장의 이미지는 하나의 긴 상품 리스트를 캡처한 쿠팡 상품 목록 스크린샷입니다. 
+
+중요:
+- 중복되어 찍힌 상품이 있다면 하나로 합치고, 전체 리스트에서 유니크한 상품 정보만 추출하라.
+- 같은 상품이 여러 이미지에 나타나면 가장 명확한 정보를 사용하라.
+
+각 상품의 정보를 추출하여 다음 JSON 배열 형식으로 응답하라:
+
+[
+  {
+    "brand": "브랜드명 (한글/영어)",
+    "name": "상품 전체 이름",
+    "flavor": "맛 정보 (있으면 추출, 없으면 빈 문자열)",
+    "weight_g": 숫자 (중량을 그램 단위로 추출, 예: 2.27kg -> 2270, 400g -> 400),
+    "is_snack": true/false (단백질 간식류: 바, 쿠키, 칩 등이면 true),
+    "bundle_count": 숫자 (상품명에 '2개', '3팩', 'x2', '2입' 등이 있으면 숫자 추출, 없으면 1)
+  },
+  ...
+]
+
+중요:
+- weight_g는 중량을 그램(g) 단위로 숫자만 추출 (kg 단위면 1000을 곱해서 변환)
+- flavor는 상품명이나 설명에서 맛 정보를 추출 (예: "초콜릿", "바닐라", "딸기" 등)
+- bundle_count는 상품명에서 묶음 정보를 추출 (예: "신타6 2.27kg x 2개" -> 2)
+- is_snack은 단백질 간식류인지 판단 (바, 쿠키, 칩 등)
+- 모든 상품을 빠짐없이 추출하라`;
+
+    try {
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey,
+          images: bGroupListImages,
+          prompt,
+          mode: 'detailed',
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error('Failed to analyze');
+      }
+
+      const data = await res.json();
+      let listProducts: Array<{
+        brand: string;
+        name: string;
+        flavor?: string;
+        weight_g?: number;
+        is_snack: boolean;
+        bundle_count: number;
+      }> = [];
+
+      // JSON 파싱
+      if (data.raw) {
+        const parsed = safeParseJSON(data.text);
+        if (parsed && Array.isArray(parsed)) {
+          listProducts = parsed;
+        }
+      } else if (Array.isArray(data)) {
+        listProducts = data;
+      }
+
+      // 정밀 중복 체크 함수 (400g 룰)
+      const filterNewItems = (
+        scannedItems: typeof listProducts,
+        inventoryItems: Product[]
+      ): {
+        newItems: typeof bGroupListResults;
+        excludedItems: typeof bGroupListExcluded;
+      } => {
+        const newItems: typeof bGroupListResults = [];
+        const excludedItems: typeof bGroupListExcluded = [];
+
+        for (const scanned of scannedItems) {
+          // 1. 브랜드 필터
+          if (bGroupBrandFilter.trim()) {
+            const brandKeywords = bGroupBrandFilter.split(',').map(b => b.trim().toLowerCase());
+            const productBrand = (scanned.brand || '').toLowerCase();
+            const matches = brandKeywords.some(keyword => productBrand.includes(keyword));
+            
+            if (!matches) {
+              excludedItems.push({
+                brand: scanned.brand,
+                name: scanned.name,
+                flavor: scanned.flavor,
+                weight_g: scanned.weight_g,
+                reason: `설정된 브랜드 아님`,
+                type: 'BRAND',
+              });
+              continue;
+            }
+          }
+
+          // 2. 묶음 필터 (간식은 묶음 허용)
+          if (scanned.bundle_count >= bGroupBundleExclude && !scanned.is_snack) {
+            excludedItems.push({
+              brand: scanned.brand,
+              name: scanned.name,
+              flavor: scanned.flavor,
+              weight_g: scanned.weight_g,
+              reason: `${scanned.bundle_count}개 묶음 - 묶음 기준 초과`,
+              type: 'BUNDLE',
+            });
+            continue;
+          }
+
+          // 3. 정밀 중복 체크 (400g 룰)
+          const scannedWeightG = scanned.weight_g;
+          const scannedBrand = (scanned.brand || '').toLowerCase();
+          const scannedName = scanned.name.toLowerCase();
+          const scannedFlavor = (scanned.flavor || '').toLowerCase();
+
+          let isDuplicate = false;
+          let duplicateReason = '';
+
+          for (const inventory of inventoryItems) {
+            const inventoryBrand = (inventory.brand || '').toLowerCase();
+            const inventoryName = (inventory.name || '').toLowerCase();
+            const inventoryFlavor = (inventory.flavor || '').toLowerCase();
+            
+            // 브랜드가 같은지 확인
+            if (scannedBrand && inventoryBrand && scannedBrand !== inventoryBrand) {
+              continue;
+            }
+
+            // 상품명 유사도 체크 (핵심 키워드 겹침)
+            const scannedKeywords = scannedName.split(/\s+/).filter(k => k.length > 2);
+            const inventoryKeywords = inventoryName.split(/\s+/).filter(k => k.length > 2);
+            const commonKeywords = scannedKeywords.filter(k => inventoryKeywords.includes(k));
+            
+            if (commonKeywords.length === 0) {
+              continue;
+            }
+
+            // 맛 정보 비교 (있으면)
+            if (scannedFlavor && inventoryFlavor && scannedFlavor !== inventoryFlavor) {
+              continue;
+            }
+
+            // 중량 비교 (400g 룰)
+            if (scannedWeightG !== undefined) {
+              const inventoryWeightG = parseWeightToGrams(inventory.weight);
+              
+              if (inventoryWeightG !== undefined) {
+                const weightDiff = Math.abs(scannedWeightG - inventoryWeightG);
+                
+                if (weightDiff < 400) {
+                  // 400g 미만 차이면 중복으로 간주
+                  isDuplicate = true;
+                  duplicateReason = `보관함 제품과 용량 ${weightDiff}g 차이로 제외됨`;
+                  break;
+                }
+              }
+            } else {
+              // 중량 정보가 없으면 상품명 유사도만으로 판단
+              if (commonKeywords.length >= 2) {
+                isDuplicate = true;
+                duplicateReason = '보관함 제품과 유사한 상품명';
+                break;
+              }
+            }
+          }
+
+          if (isDuplicate) {
+            excludedItems.push({
+              brand: scanned.brand,
+              name: scanned.name,
+              flavor: scanned.flavor,
+              weight_g: scanned.weight_g,
+              reason: duplicateReason,
+              type: 'DUPLICATE',
+            });
+            continue;
+          }
+
+          // 통과한 상품
+          newItems.push({
+            ...scanned,
+            status: 'new',
+          });
+        }
+
+        return { newItems, excludedItems };
+      };
+
+      // 필터링 실행
+      const { newItems, excludedItems } = filterNewItems(listProducts, products);
+
+      setBGroupListResults(newItems);
+      setBGroupListExcluded(excludedItems);
+      
+      toast.success(`분석 완료! ${newItems.length}개 신규 상품 발견, ${excludedItems.length}개 제외`);
+    } catch (error) {
+      console.error('Failed to analyze list:', error);
+      toast.error('분석 중 오류가 발생했습니다.');
+    } finally {
+      setIsBGroupListAnalyzing(false);
+    }
+  };
+
+  // 리스트 스캔 결과: 엑셀 복사
+  const handleBGroupListCopyToExcel = () => {
+    if (bGroupListResults.length === 0) {
+      toast.error('복사할 상품이 없습니다.');
+      return;
+    }
+
+    const rows = bGroupListResults.map((product) => {
+      const fields = [
+        product.name || '',
+        product.brand || '',
+        product.flavor || '',
+        product.weight_g ? `${product.weight_g}g` : '',
+        product.bundle_count > 1 ? `${product.bundle_count}개` : '',
+        '', // 링크 (없음)
+        '', // 영양성분 등 (없음)
+      ];
+      return fields.join('\t');
+    });
+
+    const tabSeparated = rows.join('\n');
+    navigator.clipboard.writeText(tabSeparated).then(() => {
+      toast.success(`복사 완료! ${bGroupListResults.length}개 상품 정보가 클립보드에 복사되었습니다.`);
+    });
+  };
+
+  // 리스트 스캔 결과: 보관함에 저장
+  const handleBGroupListSaveToA = async (product: typeof bGroupListResults[0]) => {
+    setIsBSaving(true);
+
+    try {
+      const newProduct: Omit<Product, 'id' | 'createdAt'> = {
+        name: product.name,
+        brand: product.brand,
+        flavor: '',
+        weight: '',
+        category_large: product.is_snack ? '간식' : '',
+        category_small: '',
+        imageUrl: '',
+      };
+
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct),
+      });
+
+      if (res.ok) {
+        await loadProducts();
+        setBGroupListResults((prev) => prev.filter((p) => p.name !== product.name));
+        toast.success('보관함에 등록되었습니다!');
+      } else {
+        throw new Error('Failed to save product');
+      }
+    } catch (error) {
+      console.error('Failed to save to A group:', error);
+      toast.error('저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsBSaving(false);
+    }
+  };
+
+  // B그룹 데이터를 A그룹(보관함)에 저장
+  const handleBSaveToA = async () => {
+    if (!bGroupFormData.name) {
+      toast.error('제품명을 입력해주세요.');
+      return;
+    }
+
+    setIsBSaving(true);
+
+    try {
+      // 메인 이미지 가져오기 (첫 번째 이미지)
+      let imageUrl = '';
+      if (bGroupImages.length > 0) {
+        // Base64 이미지를 압축하여 저장
+        imageUrl = await ensureImageResolution(bGroupImages[0], 1000);
+      }
+
+      // B그룹 데이터를 A그룹 Product 스키마로 변환
+      const newProduct: Omit<Product, 'id' | 'createdAt'> = {
+        name: bGroupFormData.name,
+        brand: '', // B그룹에는 브랜드 필드가 없으므로 빈 문자열
+        flavor: bGroupFormData.flavor,
+        weight: bGroupFormData.amount,
+        category_large: bGroupFormData.category,
+        category_small: bGroupFormData.sub_category,
+        serving: bGroupFormData.gram ? `${bGroupFormData.gram}g` : undefined,
+        calories: bGroupFormData.calorie ? Number(bGroupFormData.calorie) : undefined,
+        carbs: bGroupFormData.total_carb ? Number(bGroupFormData.total_carb) : undefined,
+        protein: bGroupFormData.protein ? Number(bGroupFormData.protein) : undefined,
+        fat: bGroupFormData.fat ? Number(bGroupFormData.fat) : undefined,
+        sugar: bGroupFormData.sugar ? Number(bGroupFormData.sugar) : undefined,
+        imageUrl: imageUrl,
+      };
+
+      // API를 통해 저장
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct),
+      });
+
+      if (res.ok) {
+        await loadProducts();
+        setBGroupSaved(true);
+        toast.success('보관함에 등록되었습니다!');
+      } else {
+        throw new Error('Failed to save product');
+      }
+    } catch (error) {
+      console.error('Failed to save to A group:', error);
+      toast.error('저장 중 오류가 발생했습니다.');
+    } finally {
+      setIsBSaving(false);
+    }
+  };
+
 
   const handleCGroupFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -1348,6 +2194,29 @@ export default function Home() {
   };
 
   return (
+    <>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          style: {
+            background: 'rgba(0, 0, 0, 0.8)',
+            color: '#fff',
+            border: '1px solid rgba(204, 255, 0, 0.3)',
+          },
+          success: {
+            iconTheme: {
+              primary: '#ccff00',
+              secondary: '#000',
+            },
+          },
+          error: {
+            iconTheme: {
+              primary: '#ef4444',
+              secondary: '#fff',
+            },
+          },
+        }}
+      />
     <div className="min-h-screen bg-zinc-950 text-white relative overflow-hidden">
       {/* Aurora Background Effect */}
       <div className="fixed inset-0 pointer-events-none">
@@ -1365,7 +2234,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto flex items-center gap-4">
           <div className="flex items-center gap-2">
             <Sparkles className="w-6 h-6 text-[#ccff00]" />
-            <h1 className="text-2xl font-bold text-[#ccff00]">Protin Manager</h1>
+            <h1 className="text-2xl font-bold text-[#ccff00]">Protein Manager</h1>
           </div>
           <div className="flex-1"></div>
           <div className="flex items-center gap-2">
@@ -1606,24 +2475,24 @@ export default function Home() {
                   <>
                     {viewMode === 'grid' ? (
                       <div className="min-h-screen">
-                        <VirtuosoGrid
-                          totalCount={filteredProducts.length}
-                          data={filteredProducts}
-                          useWindowScroll
+                      <VirtuosoGrid
+                        totalCount={filteredProducts.length}
+                        data={filteredProducts}
+                        useWindowScroll
                           overscan={2000}
-                          itemContent={(index, product) => (
-                            <ProductCard
-                              key={product.id}
-                              product={product}
-                              onDoubleClick={handleProductDoubleClick}
-                              onDelete={deleteProduct}
-                            />
-                          )}
+                        itemContent={(index, product) => (
+                          <ProductCard
+                            key={product.id}
+                            product={product}
+                            onDoubleClick={handleProductDoubleClick}
+                            onDelete={deleteProduct}
+                          />
+                        )}
                           components={{
                             List: GridList,
                           }}
-                          style={{ height: 'auto', minHeight: '400px' }}
-                        />
+                        style={{ height: 'auto', minHeight: '400px' }}
+                      />
                       </div>
                     ) : (
                       // List 뷰
@@ -1728,68 +2597,270 @@ export default function Home() {
               initial="hidden"
               animate="visible"
               exit="exit"
-              onPaste={handlePaste}
-              className="space-y-4"
+              className="space-y-6"
             >
+              {/* 리스트 스캔 모드 */}
+                  {/* 설정 UI */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-xl"
-              >
-                <p className="text-gray-400 text-sm mb-2 flex items-center gap-2">
-                  <Upload className="w-4 h-4" />
-                  쿠팡 그리드 같은 대량 상품 이미지를 붙여넣으세요 (Ctrl+V). A그룹에 이미 있는 상품은
-                  자동으로 제외됩니다.
-                </p>
-                {bGroupResults.length > 0 && (
+                    className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl space-y-4"
+                  >
+                    <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2">
+                      <FileText className="w-5 h-5" />
+                      리스트 스캔 설정
+                    </h3>
+
+                    {/* 브랜드 필터 */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-300">브랜드 필터</label>
+                      <input
+                        type="text"
+                        value={bGroupBrandFilter}
+                        onChange={(e) => setBGroupBrandFilter(e.target.value)}
+                        placeholder="머슬팜, 마이프로틴 (비어있으면 전체 허용)"
+                        className="w-full px-4 py-3 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      />
+                    </div>
+
+                    {/* 묶음 제외 기준 */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-300">묶음 제외 기준</label>
+                      <input
+                        type="number"
+                        value={bGroupBundleExclude}
+                        onChange={(e) => setBGroupBundleExclude(Number(e.target.value) || 2)}
+                        min="1"
+                        className="w-full px-4 py-3 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      />
+                      <p className="text-xs text-gray-400">N개 이상 묶음 상품 제외 (간식은 묶음 허용)</p>
+                    </div>
+
+                    {/* 이미지 입력 (Ctrl+V 전용) */}
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-gray-300">리스트 스크린샷</label>
+                      <div
+                        onPaste={handleBGroupListPaste}
+                        className="border-2 border-dashed border-white/20 rounded-lg p-8 text-center hover:border-[#ccff00]/50 transition-all bg-black/20"
+                      >
+                        <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                        <p className="text-gray-400 text-sm">여기를 클릭하고 스크린샷을 계속 붙여넣으세요</p>
+                        <p className="text-[#ccff00] text-xs font-semibold mt-1">Ctrl+V (최대 5장)</p>
+                        {bGroupListImages.length > 0 && (
+                          <p className="text-xs text-gray-500 mt-2">현재 {bGroupListImages.length}장 대기 중</p>
+                        )}
+                      </div>
+
+                      {/* 대기열 미리보기 */}
+                      {bGroupListImages.length > 0 && (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {bGroupListImages.map((img, idx) => (
+                              <div key={idx} className="relative w-full h-24 bg-black/20 rounded-lg overflow-hidden group">
+                                <img
+                                  src={img}
+                                  alt={`Screenshot ${idx + 1}`}
+                                  className="w-full h-full object-contain"
+                                />
+                                <button
+                                  onClick={() => handleBGroupListImageRemove(idx)}
+                                  className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                                >
+                                  <X className="w-3 h-3 text-white" />
+                                </button>
+                                <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/70 rounded text-xs text-white">
+                                  {idx + 1}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                   <RippleButton
-                    onClick={copyToCSV}
-                    className="px-4 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_20px_rgba(204,255,0,0.5)] hover:shadow-[0_0_30px_rgba(204,255,0,0.7)] flex items-center gap-2"
+                            onClick={handleBGroupListImagesClear}
+                            className="w-full px-4 py-2 bg-transparent border border-white/20 text-gray-400 hover:text-white hover:border-white/40 rounded-lg transition-all text-sm flex items-center justify-center gap-2"
                   >
-                    <Copy className="w-4 h-4" />
-                    CSV로 복사
+                            <X className="w-4 h-4" />
+                            모두 지우기
                   </RippleButton>
-                )}
-              </motion.div>
-
-              <motion.div
-                variants={containerVariants}
-                initial="hidden"
-                animate="visible"
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"
-              >
-                {bGroupResults.map((product, idx) => (
-                  <motion.div
-                    key={idx}
-                    variants={itemVariants}
-                    whileHover={{ scale: 1.05, y: -5 }}
-                    className="group bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 hover:border-[#ccff00] hover:shadow-[0_0_20px_rgba(204,255,0,0.3)] transition-all"
-                  >
-                    <div className="space-y-1">
-                      {product.brand && (
-                        <div className="text-xs text-gray-400">{product.brand}</div>
+                        </div>
                       )}
-                      <div className="font-semibold text-[#ccff00]">{product.name}</div>
-                      {product.flavor && <div className="text-sm text-gray-300">{product.flavor}</div>}
-                      {product.weight && <div className="text-xs text-gray-400">{product.weight}</div>}
-        </div>
-                  </motion.div>
-                ))}
+                    </div>
+
+                    {/* 일괄 분석 버튼 */}
+                    <RippleButton
+                      onClick={handleBGroupListAnalyze}
+                      disabled={bGroupListImages.length === 0 || isBGroupListAnalyzing}
+                      className="w-full px-6 py-4 bg-[#ccff00] text-black font-bold text-lg rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_30px_rgba(204,255,0,0.7)] hover:shadow-[0_0_40px_rgba(204,255,0,0.9)] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isBGroupListAnalyzing ? (
+                        <>
+                          <Loader2 className="w-6 h-6 animate-spin" />
+                          분석 중...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-6 h-6" />
+                          {bGroupListImages.length}장의 스크린샷 일괄 분석
+                        </>
+                      )}
+                    </RippleButton>
               </motion.div>
 
-              {bGroupResults.length === 0 && (
+                  {/* 결과 화면 */}
+                  {bGroupListResults.length > 0 && (
+              <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl"
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2">
+                          <Package className="w-5 h-5" />
+                          신규 발견된 상품 (New) ({bGroupListResults.length}개)
+                        </h3>
+                        {bGroupListResults.length > 0 && (
+                          <RippleButton
+                            onClick={handleBGroupListCopyToExcel}
+                            className="px-4 py-2 bg-transparent border-2 border-[#ccff00] text-[#ccff00] font-semibold rounded-lg hover:bg-[#ccff00]/10 transition-all flex items-center gap-2 text-sm"
+                          >
+                            <Copy className="w-4 h-4" />
+                            엑셀로 모두 복사
+                          </RippleButton>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {bGroupListResults.map((product, idx) => (
+                          <div
+                    key={idx}
+                            className="bg-black/30 backdrop-blur-xl border border-white/10 rounded-lg p-4 space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1">
+                                <p className="text-xs text-gray-400 mb-1">{product.brand || '브랜드 없음'}</p>
+                                <p className="text-sm font-semibold text-[#ccff00] line-clamp-2">{product.name}</p>
+                                {product.flavor && (
+                                  <p className="text-xs text-gray-300 mt-1">맛: {product.flavor}</p>
+                                )}
+                                {product.weight_g && (
+                                  <p className="text-xs text-gray-300">용량: {product.weight_g >= 1000 ? `${(product.weight_g / 1000).toFixed(2)}kg` : `${product.weight_g}g`}</p>
+                                )}
+                                <div className="flex gap-2 mt-2">
+                                  {product.is_snack && (
+                                    <span className="px-2 py-0.5 bg-[#ccff00]/20 text-[#ccff00] text-xs rounded-full">
+                                      간식
+                                    </span>
+                                  )}
+                                  {product.bundle_count > 1 && (
+                                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">
+                                      {product.bundle_count}개 묶음
+                                    </span>
+                                  )}
+        </div>
+                              </div>
+                            </div>
+                            <RippleButton
+                              onClick={() => handleBGroupListSaveToA(product)}
+                              disabled={isBSaving}
+                              className="w-full px-4 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                            >
+                              <Save className="w-4 h-4" />
+                              보관함 저장
+                            </RippleButton>
+                          </div>
+                        ))}
+                      </div>
+              </motion.div>
+                  )}
+
+                  {/* 제외된 상품 (Duplicates) */}
+                  {bGroupListExcluded.length > 0 && (
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="text-center py-12 text-gray-400"
-                >
-                  이미지를 붙여넣어 상품을 추출하세요.
-                </motion.div>
-              )}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl"
+                    >
+                      <details className="space-y-2" open>
+                        <summary className="text-sm font-semibold text-[#ccff00] cursor-pointer flex items-center gap-2 mb-4">
+                          <FileText className="w-4 h-4" />
+                          제외된 상품 (Duplicates) ({bGroupListExcluded.length}개)
+                        </summary>
+
+                        {/* 필터 칩 */}
+                        <div className="mb-4 overflow-x-auto">
+                          <div className="flex gap-2 pb-2">
+                            {(['ALL', 'BRAND', 'BUNDLE', 'DUPLICATE'] as const).map((filterType) => {
+                              const count = filterType === 'ALL' 
+                                ? bGroupListExcluded.length
+                                : bGroupListExcluded.filter(item => item.type === filterType).length;
+                              
+                              const labels = {
+                                ALL: '전체',
+                                BRAND: '⛔ 브랜드 제외',
+                                BUNDLE: '📦 묶음/수량',
+                                DUPLICATE: '♻️ 보관함 중복',
+                              };
+
+                              const isSelected = bGroupExcludedFilter === filterType;
+
+                              return (
+                                <button
+                                  key={filterType}
+                                  onClick={() => setBGroupExcludedFilter(filterType)}
+                                  className={`px-4 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all ${
+                                    isSelected
+                                      ? 'bg-[#ccff00] text-black shadow-[0_0_10px_rgba(204,255,0,0.5)]'
+                                      : 'bg-transparent border border-white/20 text-white hover:border-white/40'
+                                  }`}
+                                >
+                                  {labels[filterType]} ({count})
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 필터링된 리스트 */}
+                        <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
+                          {bGroupListExcluded
+                            .filter(item => 
+                              bGroupExcludedFilter === 'ALL' || item.type === bGroupExcludedFilter
+                            )
+                            .map((item, idx) => {
+                              const typeLabels = {
+                                BRAND: '브랜드',
+                                BUNDLE: '묶음',
+                                DUPLICATE: '중복',
+                              };
+
+                              const typeColors = {
+                                BRAND: 'bg-red-500/20 text-red-400 border-red-500/50',
+                                BUNDLE: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
+                                DUPLICATE: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
+                              };
+
+                              return (
+                                <div key={idx} className="text-xs text-gray-400 py-2 border-b border-white/5 flex items-start gap-2">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${typeColors[item.type]}`}>
+                                    [{typeLabels[item.type]}]
+                                  </span>
+                                  <div className="flex-1">
+                                    <p className="font-semibold text-gray-300">{item.name}</p>
+                                    <p className="text-gray-500 mt-1">
+                                      {item.brand && `${item.brand} | `}
+                                      {item.reason}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      </details>
+                    </motion.div>
+                  )}
             </motion.div>
           )}
 
-          {/* Tab C: 상세분석 */}
+          {/* Tab C: 상세분석 (단일 상품 분석) */}
           {activeTab === 'C' && (
             <motion.div
               key="C"
@@ -1797,164 +2868,457 @@ export default function Home() {
               initial="hidden"
               animate="visible"
               exit="exit"
-              className="space-y-4"
+              className="space-y-6"
             >
+              {/* 1단계: 입력 (2개 구역) */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-xl"
+                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl"
               >
-                <p className="text-gray-400 text-sm mb-4 flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  여러 장의 이미지를 동시에 업로드하세요 (상품 앞면, 뒷면, 성분표 등).
-                </p>
+                <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2 mb-4">
+                  <Upload className="w-5 h-5" />
+                  상품 이미지 & 성분표 업로드
+                </h3>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* 구역 A: 상품 이미지 (왼쪽) */}
+                  <div
+                    onClick={() => setCGroupFocusedArea('product')}
+                    onPaste={handleCGroupProductPaste}
+                    className={`space-y-3 p-4 rounded-lg border-2 transition-all ${
+                      cGroupFocusedArea === 'product'
+                        ? 'border-[#ccff00] bg-[#ccff00]/10'
+                        : 'border-white/20 bg-black/20'
+                    }`}
+                  >
+                    <h4 className="text-sm font-semibold text-[#ccff00] flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      상품 이미지
+                    </h4>
+
+                    {/* 상품 이미지 URL 입력 */}
+                    <div className="space-y-2">
+                      <label className="block text-xs text-gray-400">상품 이미지 URL 입력</label>
+                      <div className="flex gap-2">
                 <input
-                  ref={fileInputRef}
+                          type="url"
+                          value={cGroupImageUrlInput}
+                          onChange={(e) => setCGroupImageUrlInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleCGroupImageUrlAdd();
+                            }
+                          }}
+                          onFocus={() => setCGroupFocusedArea('product')}
+                          placeholder="https://..."
+                          className="flex-1 px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        />
+                        <RippleButton
+                          onClick={handleCGroupImageUrlAdd}
+                          disabled={!cGroupImageUrlInput.trim()}
+                          className="px-3 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all text-xs flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <ArrowRight className="w-3 h-3" />
+                          추가
+                        </RippleButton>
+                      </div>
+                    </div>
+
+                    {/* 상품 이미지 붙여넣기 영역 */}
+                    <div className="space-y-2">
+                      <input
+                        ref={cGroupProductFileInputRef}
                   type="file"
                   multiple
                   accept="image/*"
-                  onChange={handleCGroupFileSelect}
+                        onChange={handleCGroupProductFileSelect}
                   className="hidden"
-                  id="c-group-file-input"
+                        id="c-group-product-input"
                 />
                 <label
-                  htmlFor="c-group-file-input"
-                  className="inline-block cursor-pointer"
-                >
-                  <RippleButton
-                    type="button"
-                    className="px-4 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_20px_rgba(204,255,0,0.5)] hover:shadow-[0_0_30px_rgba(204,255,0,0.7)] flex items-center gap-2"
-                  >
-                    <Upload className="w-4 h-4" />
-                    이미지 선택
-                  </RippleButton>
+                        htmlFor="c-group-product-input"
+                        className="block cursor-pointer"
+                        onClick={() => setCGroupFocusedArea('product')}
+                      >
+                        <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-[#ccff00]/50 transition-all bg-black/20">
+                          <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
+                          <p className="text-gray-400 text-xs">또는 여기를 클릭 후</p>
+                          <p className="text-[#ccff00] text-xs font-semibold mt-1">Ctrl+V (상품컷)</p>
+                        </div>
                 </label>
-              </motion.div>
 
-              {cGroupImages.length > 0 && (
+                      {/* 상품 이미지 썸네일 */}
+                      {cGroupProductImages.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          {cGroupProductImages.map((img, idx) => (
+                            <div key={idx} className="relative w-full h-20 bg-black/20 rounded-lg overflow-hidden group">
+                              <img
+                                src={img}
+                                alt={`Product ${idx + 1}`}
+                                className={`w-full h-full object-contain transition-opacity duration-300 ${
+                                  cGroupRemovingBg.has(idx) ? 'opacity-50' : 'opacity-100'
+                                }`}
+                              />
+                              {cGroupRemovingBg.has(idx) && (
+                                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center z-10">
                 <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6"
-                >
-                  {cGroupImages.map((img, idx) => (
-                    <motion.div
-                      key={idx}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      className="w-full h-48 bg-black/20 rounded-xl border border-white/10 p-2 flex items-center justify-center"
-                    >
+                                    animate={{ rotate: 360 }}
+                                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                                  >
+                                    <Loader2 className="w-4 h-4 text-[#ccff00] mb-1" />
+                                  </motion.div>
+                                  <p className="text-[#ccff00] font-medium text-[10px]">배경 제거 중...</p>
+                                </div>
+                              )}
+                              <button
+                                onClick={() => {
+                                  setCGroupProductImages((prev) => prev.filter((_, i) => i !== idx));
+                                  setCGroupRemovingBg((prev) => {
+                                    const newSet = new Set(prev);
+                                    newSet.delete(idx);
+                                    return newSet;
+                                  });
+                                }}
+                                className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                              >
+                                <X className="w-3 h-3 text-white" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 구역 B: 성분표/영양정보 (오른쪽) */}
+                  <div
+                    onClick={() => setCGroupFocusedArea('nutrition')}
+                    onPaste={handleCGroupNutritionPaste}
+                    className={`space-y-3 p-4 rounded-lg border-2 transition-all ${
+                      cGroupFocusedArea === 'nutrition'
+                        ? 'border-[#ccff00] bg-[#ccff00]/10'
+                        : 'border-white/20 bg-black/20'
+                    }`}
+                  >
+                    <h4 className="text-sm font-semibold text-[#ccff00] flex items-center gap-2">
+                      <FileText className="w-4 h-4" />
+                      성분표/영양정보
+                    </h4>
+
+                    {/* 성분표 이미지 URL 입력 */}
+                    <div className="space-y-2">
+                      <label className="block text-xs text-gray-400">성분표 이미지 URL 입력</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={cGroupNutritionUrlInput}
+                          onChange={(e) => setCGroupNutritionUrlInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleCGroupNutritionUrlAdd();
+                            }
+                          }}
+                          onFocus={() => setCGroupFocusedArea('nutrition')}
+                          placeholder="https://..."
+                          className="flex-1 px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        />
+                        <RippleButton
+                          onClick={handleCGroupNutritionUrlAdd}
+                          disabled={!cGroupNutritionUrlInput.trim()}
+                          className="px-3 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all text-xs flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <ArrowRight className="w-3 h-3" />
+                          추가
+                        </RippleButton>
+                      </div>
+                    </div>
+
+                    {/* 성분표 붙여넣기 영역 */}
+                    <div className="space-y-2">
+                      <input
+                        ref={cGroupNutritionFileInputRef}
+                        type="file"
+                        multiple
+                        accept="image/*"
+                        onChange={handleCGroupNutritionFileSelect}
+                        className="hidden"
+                        id="c-group-nutrition-input"
+                      />
+                      <label
+                        htmlFor="c-group-nutrition-input"
+                        className="block cursor-pointer"
+                        onClick={() => setCGroupFocusedArea('nutrition')}
+                      >
+                        <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-[#ccff00]/50 transition-all bg-black/20">
+                          <FileText className="w-6 h-6 text-gray-400 mx-auto mb-2" />
+                          <p className="text-gray-400 text-xs">여기를 클릭 후</p>
+                          <p className="text-[#ccff00] text-xs font-semibold mt-1">Ctrl+V (성분표/함량표)</p>
+                        </div>
+                      </label>
+
+                      {/* 성분표 썸네일 */}
+                      {cGroupNutritionImages.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          {cGroupNutritionImages.map((img, idx) => (
+                            <div key={idx} className="relative w-full h-20 bg-black/20 rounded-lg overflow-hidden group">
                       <img
                         src={img}
-                        alt={`Upload ${idx + 1}`}
-                        className="w-full h-full object-contain rounded-xl"
-                      />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
+                                alt={`Nutrition ${idx + 1}`}
+                                className="w-full h-full object-contain"
+                              />
+                              <button
+                                onClick={() => {
+                                  setCGroupNutritionImages((prev) => prev.filter((_, i) => i !== idx));
+                                }}
+                                className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                              >
+                                <X className="w-3 h-3 text-white" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
-              {Object.keys(cGroupData).length > 0 && (
+                {/* 쿠팡 링크 입력 */}
+                <div className="space-y-2 mt-4">
+                  <label className="block text-sm font-medium text-gray-300">쿠팡 링크 (URL)</label>
+                  <input
+                    type="url"
+                    value={cGroupLinkInput}
+                    onChange={(e) => setCGroupLinkInput(e.target.value)}
+                    onBlur={(e) => {
+                      const cleaned = cleanCoupangUrl(e.target.value);
+                      setCGroupLinkInput(cleaned);
+                    }}
+                    onPaste={(e) => {
+                      setTimeout(() => {
+                        const target = e.target as HTMLInputElement;
+                        if (target && target.value) {
+                          const cleaned = cleanCoupangUrl(target.value);
+                          setCGroupLinkInput(cleaned);
+                        }
+                      }, 0);
+                    }}
+                    placeholder="https://www.coupang.com/vp/products/..."
+                    className="w-full px-4 py-3 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                  />
+                </div>
+
+                {/* 분석 시작 버튼 */}
+                <RippleButton
+                  onClick={handleCAnalyze}
+                  disabled={(cGroupProductImages.length === 0 && cGroupNutritionImages.length === 0) || isCAnalyzing}
+                  className="w-full mt-4 px-6 py-3 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_20px_rgba(204,255,0,0.5)] hover:shadow-[0_0_30px_rgba(204,255,0,0.7)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isCAnalyzing ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      분석 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5" />
+                      분석 시작
+                    </>
+                  )}
+                </RippleButton>
+              </motion.div>
+
+              {/* 2단계: 검수 폼 */}
+              {cGroupFormData.name && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl"
                 >
-                  <h3 className="text-xl font-semibold text-[#ccff00] mb-4 flex items-center gap-2">
-                    <Sparkles className="w-5 h-5" />
-                    추출된 정보
+                  <h3 className="text-lg font-semibold text-[#ccff00] mb-4 flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    데이터 검수 폼
                   </h3>
-                  <div className="space-y-4">
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {/* name */}
                     <div>
-                      <label className="block text-sm text-gray-400 mb-1">상품명</label>
+                      <label className="block text-xs text-gray-400 mb-1">제품명</label>
                       <input
                         type="text"
-                        value={cGroupData.name || ''}
-                        onChange={(e) => setCGroupData({ ...cGroupData, name: e.target.value })}
-                        className="w-full px-3 py-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        value={cGroupFormData.name}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, name: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
                       />
                     </div>
+
+                    {/* link */}
                     <div>
-                      <label className="block text-sm text-gray-400 mb-1">맛</label>
+                      <label className="block text-xs text-gray-400 mb-1">쿠팡링크</label>
+                      <input
+                        type="url"
+                        value={cGroupFormData.link}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, link: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      />
+                    </div>
+
+                    {/* flavor */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">맛</label>
                       <input
                         type="text"
-                        value={cGroupData.flavor || ''}
-                        onChange={(e) => setCGroupData({ ...cGroupData, flavor: e.target.value })}
-                        className="w-full px-3 py-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        value={cGroupFormData.flavor}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, flavor: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
                       />
                     </div>
+
+                    {/* amount */}
                     <div>
-                      <label className="block text-sm text-gray-400 mb-1">1회 제공량</label>
+                      <label className="block text-xs text-gray-400 mb-1">용량</label>
                       <input
                         type="text"
-                        value={cGroupData.serving || ''}
-                        onChange={(e) => setCGroupData({ ...cGroupData, serving: e.target.value })}
-                        className="w-full px-3 py-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        value={cGroupFormData.amount}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, amount: e.target.value })}
+                        placeholder="예: 2kg"
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+
+                    {/* category */}
                       <div>
-                        <label className="block text-sm text-gray-400 mb-1">칼로리</label>
-                        <input
-                          type="number"
-                          value={cGroupData.calories || ''}
-                          onChange={(e) =>
-                            setCGroupData({ ...cGroupData, calories: Number(e.target.value) })
-                          }
-                          className="w-full px-3 py-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">탄수화물 (g)</label>
-                        <input
-                          type="number"
-                          value={cGroupData.carbs || ''}
-                          onChange={(e) =>
-                            setCGroupData({ ...cGroupData, carbs: Number(e.target.value) })
-                          }
-                          className="w-full px-3 py-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">단백질 (g)</label>
-                        <input
-                          type="number"
-                          value={cGroupData.protein || ''}
-                          onChange={(e) =>
-                            setCGroupData({ ...cGroupData, protein: Number(e.target.value) })
-                          }
-                          className="w-full px-3 py-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">지방 (g)</label>
-                        <input
-                          type="number"
-                          value={cGroupData.fat || ''}
-                          onChange={(e) =>
-                            setCGroupData({ ...cGroupData, fat: Number(e.target.value) })
-                          }
-                          className="w-full px-3 py-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm text-gray-400 mb-1">당류 (g)</label>
-                        <input
-                          type="number"
-                          value={cGroupData.sugar || ''}
-                          onChange={(e) =>
-                            setCGroupData({ ...cGroupData, sugar: Number(e.target.value) })
-                          }
-                          className="w-full px-3 py-2 bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg text-white focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                        />
-                      </div>
+                      <label className="block text-xs text-gray-400 mb-1">대분류</label>
+                      <input
+                        type="text"
+                        value={cGroupFormData.category}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, category: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      />
                     </div>
+
+                    {/* sub_category */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">소분류</label>
+                      <input
+                        type="text"
+                        value={cGroupFormData.sub_category}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, sub_category: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      />
+                    </div>
+
+                    {/* protein */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">단백질 (g)</label>
+                        <input
+                          type="number"
+                        value={cGroupFormData.protein}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, protein: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        />
+                      </div>
+
+                    {/* scoops */}
+                      <div>
+                      <label className="block text-xs text-gray-400 mb-1">총 서빙 횟수</label>
+                        <input
+                          type="number"
+                        value={cGroupFormData.scoops}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, scoops: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        />
+                      </div>
+
+                    {/* sugar */}
+                      <div>
+                      <label className="block text-xs text-gray-400 mb-1">당류 (g)</label>
+                        <input
+                          type="number"
+                        value={cGroupFormData.sugar}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, sugar: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        />
+                      </div>
+
+                    {/* fat */}
+                      <div>
+                      <label className="block text-xs text-gray-400 mb-1">지방 (g)</label>
+                        <input
+                          type="number"
+                        value={cGroupFormData.fat}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, fat: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        />
+                      </div>
+
+                    {/* calorie */}
+                      <div>
+                      <label className="block text-xs text-gray-400 mb-1">칼로리 (kcal)</label>
+                        <input
+                          type="number"
+                        value={cGroupFormData.calorie}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, calorie: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                        />
+                      </div>
+
+                    {/* gram */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">1회 섭취량 (g)</label>
+                      <input
+                        type="number"
+                        value={cGroupFormData.gram}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, gram: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      />
+                    </div>
+
+                    {/* total_carb */}
+                    <div>
+                      <label className="block text-xs text-gray-400 mb-1">총 탄수화물 (g)</label>
+                      <input
+                        type="number"
+                        value={cGroupFormData.total_carb}
+                        onChange={(e) => setCGroupFormData({ ...cGroupFormData, total_carb: e.target.value })}
+                        className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                      />
+                    </div>
+                  </div>
+
+                  {/* 3단계: 액션 버튼 */}
+                  <div className="mt-6 flex gap-4">
+                    {/* 좌측: 엑셀 복사 버튼 (투명/테두리 스타일) */}
                     <RippleButton
-                      onClick={saveCGroupProduct}
-                      className="w-full px-4 py-3 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_20px_rgba(204,255,0,0.5)] hover:shadow-[0_0_30px_rgba(204,255,0,0.7)] flex items-center justify-center gap-2"
+                      onClick={copyCGroupToExcel}
+                      className="flex-1 px-6 py-4 bg-transparent border-2 border-[#ccff00] text-[#ccff00] font-semibold text-lg rounded-lg hover:bg-[#ccff00]/10 transition-all flex items-center justify-center gap-3"
                     >
+                      <Copy className="w-5 h-5" />
+                      엑셀용 복사 (Copy)
+                    </RippleButton>
+
+                    {/* 우측: 보관함 저장 버튼 (형광 그린 강조) */}
+                    <RippleButton
+                      onClick={handleCSaveToA}
+                      disabled={cGroupSaved || isCSaving}
+                      className="flex-1 px-6 py-4 bg-[#ccff00] text-black font-bold text-lg rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_30px_rgba(204,255,0,0.7)] hover:shadow-[0_0_40px_rgba(204,255,0,0.9)] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isCSaving ? (
+                        <>
+                          <Loader2 className="w-5 h-5 animate-spin" />
+                          저장 중...
+                        </>
+                      ) : cGroupSaved ? (
+                        <>
+                          <Package className="w-5 h-5" />
+                          저장됨
+                        </>
+                      ) : (
+                        <>
                       <Save className="w-5 h-5" />
-                      A그룹으로 저장
+                          내 보관함에 저장 (Save to A)
+                        </>
+                      )}
                     </RippleButton>
                   </div>
                 </motion.div>
@@ -1982,5 +3346,6 @@ export default function Home() {
         onSave={updateProduct}
       />
     </div>
+    </>
   );
 }
