@@ -161,7 +161,12 @@ export async function POST(request: NextRequest) {
 // Gemini로 폴백하는 함수
 async function fallbackToGemini(imageDataUrl: string, apiKey: string) {
   try {
-    const res = await fetch('/api/gemini', {
+    // 서버 사이드에서는 절대 경로가 필요함
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
+                    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
+                    'http://localhost:3000';
+    
+    const res = await fetch(`${baseUrl}/api/gemini`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

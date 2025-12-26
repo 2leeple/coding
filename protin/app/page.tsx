@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion';
 import { VirtuosoGrid } from 'react-virtuoso';
 import { Toaster, toast } from 'react-hot-toast';
+import { useAnalysis } from '../contexts/AnalysisContext';
 import {
   Save,
   Key,
@@ -19,6 +20,8 @@ import {
   X,
   Edit,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   LayoutGrid,
   List,
   Download,
@@ -26,6 +29,7 @@ import {
   Maximize2,
   ZoomIn,
   ZoomOut,
+  RotateCcw,
 } from 'lucide-react';
 
 type Tab = 'A' | 'B' | 'C';
@@ -43,6 +47,18 @@ const FILTER_CATEGORIES = {
 
 type CategoryLarge = keyof typeof FILTER_CATEGORIES;
 type CategorySmall = typeof FILTER_CATEGORIES[CategoryLarge][number];
+
+// C그룹 대분류-소분류 매핑 (이모지 제외)
+const CATEGORY_OPTIONS: Record<string, string[]> = {
+  '단백질 보충제': ['WPC', 'WPI', '식물성', '카제인', '게이너', '선식(탄수)', '마이프로틴', '국내(비추)'],
+  '운동보조제': ['BCAA', '아르기닌', '크레아틴', '글루타민', '부스터(Pre-workout)', '기타'],
+  '단백질 드링크': ['RTD(음료)', '팩', '스파클링', '기타'],
+  '단백질 간식': ['프로틴바', '쿠키', '칩', '젤리/양갱', '기타'],
+  '기타 간식': ['기타'],
+  '닭가슴살': ['스테이크', '볼', '소세지', '훈제/수비드', '소스포함'],
+  '영양제': ['종합비타민', '오메가3', '유산균', '기타'],
+  '기타': ['기타'],
+};
 
 interface Product {
   id: string;
@@ -766,53 +782,43 @@ export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [bGroupResults, setBGroupResults] = useState<Product[]>([]);
-  // C그룹 검수 폼 데이터
-  const [cGroupFormData, setCGroupFormData] = useState<{
-    name: string;
-    link: string;
-    flavor: string;
-    amount: string;
-    category: string;
-    sub_category: string;
-    protein: string;
-    scoops: string;
-    sugar: string;
-    fat: string;
-    calorie: string;
-    gram: string;
-    total_carb: string;
-  }>({
-    name: '',
-    link: '',
-    flavor: '',
-    amount: '',
-    category: '',
-    sub_category: '',
-    protein: '',
-    scoops: '',
-    sugar: '',
-    fat: '',
-    calorie: '',
-    gram: '',
-    total_carb: '',
-  });
-  // C그룹 (상세분석) - 단일 상품 분석 상태
-  const [cGroupProductImages, setCGroupProductImages] = useState<string[]>([]);
-  const [cGroupNutritionImages, setCGroupNutritionImages] = useState<string[]>([]);
-  const [cGroupLinkInput, setCGroupLinkInput] = useState('');
-  const [cGroupImageUrlInput, setCGroupImageUrlInput] = useState('');
-  const [cGroupNutritionUrlInput, setCGroupNutritionUrlInput] = useState('');
-  const [isCAnalyzing, setIsCAnalyzing] = useState(false);
-  const [isCSaving, setIsCSaving] = useState(false);
-  const [cGroupSaved, setCGroupSaved] = useState(false);
-  const [cGroupRemovingBg, setCGroupRemovingBg] = useState<Set<number>>(new Set());
-  const [cGroupFocusedArea, setCGroupFocusedArea] = useState<'product' | 'nutrition' | null>(null);
-  const [cGroupNutritionHighlights, setCGroupNutritionHighlights] = useState<Array<{
-    field: string;
-    coords: Array<{ x: number; y: number }>;
-  }>>([]);
-  const [cGroupNutritionImageMeta, setCGroupNutritionImageMeta] = useState<{ width: number; height: number } | null>(null);
-  const [cGroupFocusedField, setCGroupFocusedField] = useState<string | null>(null);
+  
+  // C그룹 전역 상태 (Context)
+  const {
+    productImages: cGroupProductImages,
+    nutritionImages: cGroupNutritionImages,
+    linkInput: cGroupLinkInput,
+    imageUrlInput: cGroupImageUrlInput,
+    nutritionUrlInput: cGroupNutritionUrlInput,
+    formData: cGroupFormData,
+    isAnalyzing: isCAnalyzing,
+    isSaving: isCSaving,
+    saved: cGroupSaved,
+    removingBg: cGroupRemovingBg,
+    isProductImageLoading,
+    isNutritionImageLoading,
+    focusedArea: cGroupFocusedArea,
+    nutritionHighlights: cGroupNutritionHighlights,
+    nutritionImageMeta: cGroupNutritionImageMeta,
+    focusedField: cGroupFocusedField,
+    currentNutritionImageIndex,
+    addProductImage,
+    removeProductImage,
+    addNutritionImage,
+    removeNutritionImage,
+    setLinkInput: setCGroupLinkInput,
+    setImageUrlInput: setCGroupImageUrlInput,
+    setNutritionUrlInput: setCGroupNutritionUrlInput,
+    setFormData: setCGroupFormData,
+    setFocusedArea: setCGroupFocusedArea,
+    setFocusedField: setCGroupFocusedField,
+    setCurrentNutritionImageIndex,
+    runAnalysis: runCAnalysis,
+    saveToInventory: handleCSaveToA,
+    resetAll: handleCReset,
+  } = useAnalysis();
+  
+  // 로컬 UI 상태 (Context에 포함되지 않는 것들)
   const [nutritionImageLoaded, setNutritionImageLoaded] = useState(false);
   const [isNutritionImageZoomed, setIsNutritionImageZoomed] = useState(false);
   const [nutritionImageZoom, setNutritionImageZoom] = useState(1);
@@ -1127,50 +1133,14 @@ export default function Home() {
       }
 
       const blob = await response.blob();
-      const tempIndex = cGroupProductImages.length;
-      
-      // 2. 먼저 원본 이미지를 미리보기에 추가 (임시)
       const reader = new FileReader();
       reader.onload = async (e) => {
         const originalDataUrl = e.target?.result as string;
         
-        // 원본 이미지 추가
-        setCGroupProductImages((prev) => [...prev, originalDataUrl]);
         setCGroupImageUrlInput('');
-        
-        // 배경 제거 시작 (로딩 상태 표시)
-        setCGroupRemovingBg((prev) => new Set(prev).add(tempIndex));
-        
-        try {
-          // 3. Blob을 File로 변환
-          const file = new File([blob], 'image.png', { type: blob.type || 'image/png' });
-          
-          // 4. 배경 제거 유틸리티 함수 실행
-          const { removeBackground, blobToDataURL } = await import('../utils/imageProcessor');
-          const processedBlob = await removeBackground(file);
-          
-          // 5. 배경 제거된 이미지를 Base64로 변환
-          const processedDataUrl = await blobToDataURL(processedBlob);
-          
-          // 6. 원본 이미지를 배경 제거된 이미지로 교체
-          setCGroupProductImages((prev) => {
-            const newImages = [...prev];
-            newImages[tempIndex] = processedDataUrl;
-            return newImages;
-          });
-          
-          toast.success('배경이 제거된 이미지가 추가되었습니다!');
-        } catch (error) {
-          console.error('Failed to remove background:', error);
-          toast.error('배경 제거에 실패했습니다. 원본 이미지를 사용합니다.');
-        } finally {
-          // 로딩 상태 해제
-          setCGroupRemovingBg((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(tempIndex);
-            return newSet;
-          });
-        }
+        // Context의 addProductImage 사용 (백그라운드에서 배경 제거)
+        await addProductImage(originalDataUrl);
+        toast.success('이미지가 추가되었습니다. 배경 제거 중...');
       };
       reader.readAsDataURL(blob);
     } catch (error) {
@@ -1179,44 +1149,17 @@ export default function Home() {
     }
   };
 
-  // C그룹 상품 이미지 파일 선택 (배경 제거)
+  // C그룹 상품 이미지 파일 선택 (배경 제거) - Context 사용
   const handleCGroupProductFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
 
-    for (let idx = 0; idx < files.length; idx++) {
-      const file = files[idx];
-      const currentIndex = cGroupProductImages.length + idx;
-      
-      // 먼저 원본 이미지 추가
+    for (const file of files) {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const originalDataUrl = e.target?.result as string;
-        setCGroupProductImages((prev) => [...prev, originalDataUrl]);
-        
-        // 배경 제거 시작
-        setCGroupRemovingBg((prev) => new Set(prev).add(currentIndex));
-        
-        try {
-          const { removeBackground, blobToDataURL } = await import('../utils/imageProcessor');
-          const processedBlob = await removeBackground(file);
-          const processedDataUrl = await blobToDataURL(processedBlob);
-          
-          // 원본을 배경 제거된 이미지로 교체
-          setCGroupProductImages((prev) => {
-            const newImages = [...prev];
-            newImages[currentIndex] = processedDataUrl;
-            return newImages;
-          });
-        } catch (error) {
-          console.error('Failed to remove background:', error);
-        } finally {
-          setCGroupRemovingBg((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(currentIndex);
-            return newSet;
-          });
-        }
+        // Context의 addProductImage 사용 (백그라운드에서 배경 제거)
+        await addProductImage(originalDataUrl);
       };
       reader.readAsDataURL(file);
     }
@@ -1242,7 +1185,8 @@ export default function Home() {
       const reader = new FileReader();
       reader.onload = (e) => {
         const dataUrl = e.target?.result as string;
-        setCGroupNutritionImages((prev) => [...prev, dataUrl]);
+        // Context의 addNutritionImage 사용
+        addNutritionImage(dataUrl);
         setCGroupNutritionUrlInput('');
         toast.success('성분표 이미지가 추가되었습니다!');
       };
@@ -1269,7 +1213,7 @@ export default function Home() {
     });
 
     Promise.all(readers).then((imageDataUrls) => {
-      setCGroupNutritionImages((prev) => [...prev, ...imageDataUrls]);
+      imageDataUrls.forEach((url) => addNutritionImage(url));
     });
   };
 
@@ -1284,40 +1228,15 @@ export default function Home() {
 
     e.preventDefault();
 
-    for (let idx = 0; idx < imageItems.length; idx++) {
-      const item = imageItems[idx];
+    for (const item of imageItems) {
       const file = item.getAsFile();
       if (!file) continue;
 
-      const currentIndex = cGroupProductImages.length + idx;
-      
       const reader = new FileReader();
       reader.onload = async (e) => {
         const originalDataUrl = e.target?.result as string;
-        setCGroupProductImages((prev) => [...prev, originalDataUrl]);
-        
-        // 배경 제거 시작
-        setCGroupRemovingBg((prev) => new Set(prev).add(currentIndex));
-        
-        try {
-          const { removeBackground, blobToDataURL } = await import('../utils/imageProcessor');
-          const processedBlob = await removeBackground(file);
-          const processedDataUrl = await blobToDataURL(processedBlob);
-          
-          setCGroupProductImages((prev) => {
-            const newImages = [...prev];
-            newImages[currentIndex] = processedDataUrl;
-            return newImages;
-          });
-        } catch (error) {
-          console.error('Failed to remove background:', error);
-        } finally {
-          setCGroupRemovingBg((prev) => {
-            const newSet = new Set(prev);
-            newSet.delete(currentIndex);
-            return newSet;
-          });
-        }
+        // Context의 addProductImage 사용 (백그라운드에서 배경 제거)
+        await addProductImage(originalDataUrl);
       };
       reader.readAsDataURL(file);
     }
@@ -1354,7 +1273,7 @@ export default function Home() {
     Promise.all(readers).then((imageDataUrls) => {
       const validUrls = imageDataUrls.filter(Boolean);
       if (validUrls.length > 0) {
-        setCGroupNutritionImages((prev) => [...prev, ...validUrls]);
+        validUrls.forEach((url) => addNutritionImage(url));
         toast.success(`${validUrls.length}개 성분표가 추가되었습니다.`);
       }
     });
@@ -1421,25 +1340,70 @@ export default function Home() {
     // 두 그룹의 이미지를 합치기 (상품 이미지 먼저, 성분표 나중)
     const allImages = [...cGroupProductImages, ...cGroupNutritionImages];
 
-    const prompt = `제공된 이미지들을 두 그룹으로 구분하여 분석하라:
+    const prompt = `⚠️ 중요: 모든 텍스트 출력은 반드시 한국어로 해야 합니다.
+
+🚫 엄격한 환각 방지 규칙 (STRICT HALLUCINATION PREVENTION):
+1. **제공된 이미지에 있는 정보만 엄격하게 추출하라** (Strictly extract information ONLY present in the provided images)
+2. **없는 값을 지어내거나 추론하지 마라** (Do NOT fabricate or infer missing values)
+   - 영양성분표에 명시되지 않은 영양소는 '0' 또는 null로 반환하라
+   - 예: 단백질(Protein)이 표에 없으면 protein: 0
+   - 예: 당류(Sugar)가 표에 없으면 sugar: 0
+3. **개별 아미노산 수치를 총 단백질로 합산하지 마라** (Do NOT sum up individual amino acids as Total Protein)
+   - BCAA(Leucine, Valine, Isoleucine) 같은 개별 아미노산 수치는 단백질이 아니다
+   - "Total Protein" 또는 "Protein"으로 명시된 값만 사용하라
+   - 아미노산 프로필 표에 있는 개별 수치들을 합산하지 마라
+
+제공된 이미지들을 두 그룹으로 구분하여 분석하라:
 
 **첫 번째 그룹 (Product Appearance):**
 - 상품의 앞면, 뒷면, 포장 이미지
 - 제품명, 브랜드, 맛, 용량 등의 정보를 추출하라
+- 이미지에 보이는 텍스트만 추출하라 (추측하지 마라)
 
 **두 번째 그룹 (Nutrition Facts Label):**
 - 영양성분표, 함량표
 - 특히 영양성분표(Nutrition Facts)를 꼼꼼히 읽어서 protein, sugar, fat, calorie, total_carb 수치를 숫자만 추출하라
+- **중요**: 표에 명시되지 않은 영양소는 반드시 0으로 반환하라
 - gram은 '1 scoop (30g)' 같은 표기에서 괄호 안의 숫자를 의미한다
 - scoops는 'Total Servings' 또는 전체 용량 나누기 1회 용량을 계산해서 넣어라
+- **경고**: 아미노산 프로필(Amino Acid Profile) 섹션의 개별 아미노산 수치를 단백질로 합산하지 마라
+
+📌 한국어 출력 규칙 (Korean Output - 강제 적용):
+1. **제품명 (name)**: 
+   - 영어 제품명이 있어도 반드시 자연스러운 한국어로 번역하라
+   - 브랜드명 + 제품명을 모두 한글로 표기하라
+   - 예: "MusclePharm Combat Ultra Whey" -> "머슬팜 컴뱃 울트라 웨이"
+   - 예: "Optimum Nutrition Gold Standard" -> "옵티멈 뉴트리션 골드 스탠다드"
+   - 예: "Dymatize ISO100" -> "다이마타이즈 아이에스오 100"
+   - 통용되는 한글 명칭이 있으면 그것을 우선 사용하라
+
+2. **맛 (flavor)**:
+   - 영어 맛 이름을 반드시 자연스러운 한국어로 번역하라
+   - 예: "Chocolate" -> "초콜릿"
+   - 예: "Strawberry Cream" -> "딸기 크림"
+   - 예: "Vanilla" -> "바닐라"
+   - 예: "Cookies and Cream" -> "쿠키앤크림"
+   - 예: "Chocolate Peanut Butter" -> "초콜릿 피넛 버터"
+
+3. **대분류 (category)**: 
+   - 항상 "단백질 보충제"로 고정하라 (변경하지 마라)
+
+4. **소분류 (sub_category)**:
+   - 성분표의 원재료를 분석하여 다음 중 하나를 선택하라:
+   - **WPC 우선 법칙**: 원재료에 "Whey Protein Concentrate" 또는 "Concentrate"가 포함되면, WPI가 섞여 있어도 무조건 "WPC" 선택
+   - **WPI 조건**: 오직 "Whey Protein Isolate" 또는 "Isolate"만 있고 "Concentrate"가 없으면 "WPI" 선택
+   - **식물성**: "Soy", "Pea", "식물성", "Plant" 포함 시 "식물성" 선택
+   - **카제인**: "Casein" 포함 시 "카제인" 선택
+   - **게이너**: "Gainer", "Mass", "게이너" 포함 시 "게이너" 선택
+   - **기타**: 위에 해당하지 않으면 다음 중 적절한 것을 선택: "선식(탄수)", "마이프로틴", "국내(비추)"
 
 다음 형식의 JSON으로 응답하라:
 {
-  "name": "제품명",
-    "flavor": "맛",
-  "amount": "용량 (예: 2kg)",
-  "category": "대분류",
-  "sub_category": "소분류",
+  "name": "제품명 (한국어, 브랜드명 포함)",
+  "flavor": "맛 (한국어)",
+  "amount": "용량 (예: 2.27kg)",
+  "category": "단백질 보충제",
+  "sub_category": "소분류 (WPC, WPI, 식물성, 카제인, 게이너, 선식(탄수), 마이프로틴, 국내(비추) 중 하나)",
   "protein": 숫자 (단백질 g),
   "scoops": 숫자 (총 서빙 횟수),
   "sugar": 숫자 (당류 g),
@@ -1473,21 +1437,72 @@ export default function Home() {
         extractedData = data;
       }
 
-      // 폼 데이터 업데이트
+      // 소분류 분류 로직: AI가 추출한 sub_category를 한글 옵션으로 매핑 (WPC 우선 법칙 적용)
+      const mapSubCategoryToKorean = (subCategory: string, fullText?: string): string => {
+        if (!subCategory) return '';
+        
+        const subCategoryLower = subCategory.toLowerCase();
+        const fullTextLower = (fullText || '').toLowerCase();
+        const combinedText = `${subCategoryLower} ${fullTextLower}`;
+        
+        // WPC 우선 법칙: Concentrate가 포함되면 WPI가 섞여 있어도 무조건 WPC
+        if (combinedText.includes('concentrate') || combinedText.includes('wpc')) {
+          return 'WPC';
+        }
+        
+        // WPI 조건: Isolate만 있고 Concentrate가 없으면 WPI
+        if ((combinedText.includes('isolate') || combinedText.includes('wpi')) && !combinedText.includes('concentrate')) {
+          return 'WPI';
+        }
+        
+        // 식물성
+        if (combinedText.includes('soy') || combinedText.includes('pea') || combinedText.includes('식물성') || combinedText.includes('plant')) {
+          return '식물성';
+        }
+        
+        // 카제인
+        if (combinedText.includes('casein') || combinedText.includes('카제인')) {
+          return '카제인';
+        }
+        
+        // 게이너
+        if (combinedText.includes('gainer') || combinedText.includes('mass') || combinedText.includes('게이너')) {
+          return '게이너';
+        }
+        
+        // 이미 한글 옵션인 경우 그대로 반환
+        const koreanOptions = ['WPC', 'WPI', '식물성', '카제인', '게이너', '선식(탄수)', '마이프로틴', '국내(비추)'];
+        if (koreanOptions.includes(subCategory)) {
+          return subCategory;
+        }
+        
+        // 기본값: 빈 문자열 (사용자가 수동으로 선택하도록)
+        return '';
+      };
+
+      // 폼 데이터 업데이트 (0이나 null 값 처리)
+      const formatNumericValue = (value: any): string => {
+        if (value === null || value === undefined || value === '') return '';
+        const numValue = typeof value === 'string' ? parseFloat(value) : value;
+        if (isNaN(numValue)) return '';
+        // 0인 경우도 표시 (사용자가 인지할 수 있도록)
+        return numValue === 0 ? '0' : numValue.toString();
+      };
+
       setCGroupFormData({
         name: extractedData.name || '',
         link: cleanCoupangUrl(cGroupLinkInput), // 정제된 URL
         flavor: extractedData.flavor || '',
         amount: extractedData.amount || '',
-        category: extractedData.category || '',
-        sub_category: extractedData.sub_category || '',
-        protein: extractedData.protein?.toString() || '',
-        scoops: extractedData.scoops?.toString() || '',
-        sugar: extractedData.sugar?.toString() || '',
-        fat: extractedData.fat?.toString() || '',
-        calorie: extractedData.calorie?.toString() || '',
-        gram: extractedData.gram?.toString() || '',
-        total_carb: extractedData.total_carb?.toString() || '',
+        category: '단백질 보충제', // 대분류는 항상 "단백질 보충제"로 고정
+        sub_category: mapSubCategoryToKorean(extractedData.sub_category || '', extractedData.name || ''),
+        protein: formatNumericValue(extractedData.protein),
+        scoops: formatNumericValue(extractedData.scoops),
+        sugar: formatNumericValue(extractedData.sugar),
+        fat: formatNumericValue(extractedData.fat),
+        calorie: formatNumericValue(extractedData.calorie),
+        gram: formatNumericValue(extractedData.gram),
+        total_carb: formatNumericValue(extractedData.total_carb),
       });
 
       setCGroupSaved(false); // 분석 완료 시 저장 상태 초기화
@@ -1500,14 +1515,12 @@ export default function Home() {
     }
   };
 
-  // C그룹 데이터를 A그룹(보관함)에 저장
-  const handleCSaveToA = async () => {
+  // C그룹 데이터를 A그룹(보관함)에 저장 - Context의 saveToInventory 래퍼
+  const handleCSaveToAWrapper = async () => {
     if (!cGroupFormData.name) {
       toast.error('제품명을 입력해주세요.');
       return;
     }
-
-    setIsCSaving(true);
 
     try {
       // 메인 이미지 가져오기 (첫 번째 상품 이미지 우선, 없으면 성분표)
@@ -1518,67 +1531,65 @@ export default function Home() {
         imageUrl = await ensureImageResolution(cGroupNutritionImages[0], 1000);
       }
 
-      // C그룹 데이터를 A그룹 Product 스키마로 변환
-      const newProduct: Omit<Product, 'id' | 'createdAt'> = {
-        name: cGroupFormData.name,
-        brand: '', // C그룹에는 브랜드 필드가 없으므로 빈 문자열
-        flavor: cGroupFormData.flavor,
-        weight: cGroupFormData.amount,
-        category_large: cGroupFormData.category,
-        category_small: cGroupFormData.sub_category,
-        serving: cGroupFormData.gram ? `${cGroupFormData.gram}g` : undefined,
-        calories: cGroupFormData.calorie ? Number(cGroupFormData.calorie) : undefined,
-        carbs: cGroupFormData.total_carb ? Number(cGroupFormData.total_carb) : undefined,
-        protein: cGroupFormData.protein ? Number(cGroupFormData.protein) : undefined,
-        fat: cGroupFormData.fat ? Number(cGroupFormData.fat) : undefined,
-        sugar: cGroupFormData.sugar ? Number(cGroupFormData.sugar) : undefined,
-        imageUrl: imageUrl,
-      };
-
-      // API를 통해 저장
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newProduct),
-      });
-
-      if (res.ok) {
-        await loadProducts();
-        setCGroupSaved(true);
-        toast.success('보관함에 등록되었습니다!');
-      } else {
-        throw new Error('Failed to save product');
-      }
+      // Context의 saveToInventory 사용 (Context에서 가져온 함수)
+      await handleCSaveToA(imageUrl);
+      await loadProducts();
     } catch (error) {
       console.error('Failed to save to A group:', error);
       toast.error('저장 중 오류가 발생했습니다.');
-    } finally {
-      setIsCSaving(false);
     }
   };
 
-  // C그룹 엑셀용 복사 (탭으로 구분)
-  const copyCGroupToExcel = () => {
+  // C그룹 엑셀용 복사 (탭으로 구분) - 엑셀 컬럼 순서와 일치
+  const copyCGroupToExcel = async () => {
     const fields = [
-      cGroupFormData.name,
-      cGroupFormData.link,
-      cGroupFormData.flavor,
-      cGroupFormData.amount,
-      cGroupFormData.category,
-      cGroupFormData.sub_category,
-      cGroupFormData.protein,
-      cGroupFormData.scoops,
-      cGroupFormData.sugar,
-      cGroupFormData.fat,
-      cGroupFormData.calorie,
-      cGroupFormData.gram,
-      cGroupFormData.total_carb,
+      cGroupFormData.name,           // A열: 제품명 (한글)
+      cGroupFormData.link,           // B열: 쿠팡 링크
+      cGroupFormData.flavor,         // C열: 맛 (한글)
+      cGroupFormData.amount,         // D열: 용량 (예: 2.27kg)
+      '',                            // E열: source_url (빈 값)
+      cGroupFormData.category || '단백질 보충제', // F열: 대분류
+      cGroupFormData.sub_category,   // G열: 소분류 (WPC, WPI 등)
+      cGroupFormData.protein,        // H열: 단백질
+      cGroupFormData.scoops,         // I열: 총 서빙 횟수
+      cGroupFormData.sugar,          // J열: 당류
+      cGroupFormData.fat,            // K열: 지방
+      cGroupFormData.calorie,        // L열: 칼로리
+      cGroupFormData.gram,           // M열: 1회당 용량
+      cGroupFormData.total_carb,     // N열: 총 탄수화물
     ];
 
     const tabSeparated = fields.join('\t');
-    navigator.clipboard.writeText(tabSeparated).then(() => {
-      toast.success('복사 완료! 엑셀에 붙여넣으세요.');
-    });
+
+    try {
+      // Modern Clipboard API 사용 (HTTPS 또는 localhost에서만 작동)
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tabSeparated);
+        toast.success('복사 완료! 엑셀에 붙여넣으세요.');
+      } else {
+        // Fallback: 예전 방식 (deprecated이지만 더 넓은 호환성)
+        const textArea = document.createElement('textarea');
+        textArea.value = tabSeparated;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+          toast.success('복사 완료! 엑셀에 붙여넣으세요.');
+        } else {
+          toast.error('클립보드 복사에 실패했습니다. 텍스트를 수동으로 복사해주세요.');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      toast.error('클립보드 복사에 실패했습니다. 텍스트를 수동으로 복사해주세요.');
+    }
   };
 
   // 리스트 스캔 모드: 이미지 붙여넣기 (배열에 추가)
@@ -2928,6 +2939,21 @@ export default function Home() {
               exit="exit"
               className="space-y-6"
             >
+              {/* C그룹 헤더: 제목 + 초기화 버튼 */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-bold text-[#ccff00] flex items-center gap-2">
+                  <FileText className="w-6 h-6" />
+                  상세분석
+                </h2>
+                <button
+                  onClick={handleCReset}
+                  className="px-4 py-2 text-sm text-zinc-400 hover:text-red-400 border border-zinc-700 hover:border-red-500/50 rounded-lg bg-transparent hover:bg-red-500/10 transition-all flex items-center gap-2"
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  전체 초기화
+                </button>
+              </div>
+
               {/* 1단계: 입력 (2개 구역) */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -2942,13 +2968,13 @@ export default function Home() {
                 <div className="grid grid-cols-2 gap-4">
                   {/* 구역 A: 상품 이미지 (왼쪽) */}
                   <div
-                    onClick={() => setCGroupFocusedArea('product')}
-                    onPaste={handleCGroupProductPaste}
+                    onClick={() => !isProductImageLoading && setCGroupFocusedArea('product')}
+                    onPaste={isProductImageLoading ? undefined : handleCGroupProductPaste}
                     className={`space-y-3 p-4 rounded-lg border-2 transition-all ${
                       cGroupFocusedArea === 'product'
                         ? 'border-[#ccff00] bg-[#ccff00]/10'
                         : 'border-white/20 bg-black/20'
-                    }`}
+                    } ${isProductImageLoading ? 'opacity-50 pointer-events-none' : ''}`}
                   >
                     <h4 className="text-sm font-semibold text-[#ccff00] flex items-center gap-2">
                       <Package className="w-4 h-4" />
@@ -2991,13 +3017,14 @@ export default function Home() {
                   multiple
                   accept="image/*"
                         onChange={handleCGroupProductFileSelect}
+                          disabled={isProductImageLoading}
                   className="hidden"
                         id="c-group-product-input"
                 />
                 <label
                         htmlFor="c-group-product-input"
-                        className="block cursor-pointer"
-                        onClick={() => setCGroupFocusedArea('product')}
+                        className={`block ${isProductImageLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                        onClick={() => !isProductImageLoading && setCGroupFocusedArea('product')}
                       >
                         <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-[#ccff00]/50 transition-all bg-black/20">
                           <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
@@ -3030,14 +3057,7 @@ export default function Home() {
                                 </div>
                               )}
                               <button
-                                onClick={() => {
-                                  setCGroupProductImages((prev) => prev.filter((_, i) => i !== idx));
-                                  setCGroupRemovingBg((prev) => {
-                                    const newSet = new Set(prev);
-                                    newSet.delete(idx);
-                                    return newSet;
-                                  });
-                                }}
+                                onClick={() => removeProductImage(idx)}
                                 className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20"
                               >
                                 <X className="w-3 h-3 text-white" />
@@ -3051,13 +3071,13 @@ export default function Home() {
 
                   {/* 구역 B: 성분표/영양정보 (오른쪽) */}
                   <div
-                    onClick={() => setCGroupFocusedArea('nutrition')}
-                    onPaste={handleCGroupNutritionPaste}
+                    onClick={() => !isNutritionImageLoading && setCGroupFocusedArea('nutrition')}
+                    onPaste={isNutritionImageLoading ? undefined : handleCGroupNutritionPaste}
                     className={`space-y-3 p-4 rounded-lg border-2 transition-all ${
                       cGroupFocusedArea === 'nutrition'
                         ? 'border-[#ccff00] bg-[#ccff00]/10'
                         : 'border-white/20 bg-black/20'
-                    }`}
+                    } ${isNutritionImageLoading ? 'opacity-50 pointer-events-none' : ''}`}
                   >
                     <h4 className="text-sm font-semibold text-[#ccff00] flex items-center gap-2">
                       <FileText className="w-4 h-4" />
@@ -3079,11 +3099,12 @@ export default function Home() {
                           }}
                           onFocus={() => setCGroupFocusedArea('nutrition')}
                           placeholder="https://..."
-                          className="flex-1 px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                          disabled={isNutritionImageLoading}
+                          className="flex-1 px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                         <RippleButton
                           onClick={handleCGroupNutritionUrlAdd}
-                          disabled={!cGroupNutritionUrlInput.trim()}
+                          disabled={!cGroupNutritionUrlInput.trim() || isNutritionImageLoading}
                           className="px-3 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all text-xs flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <ArrowRight className="w-3 h-3" />
@@ -3100,13 +3121,14 @@ export default function Home() {
                         multiple
                         accept="image/*"
                         onChange={handleCGroupNutritionFileSelect}
+                        disabled={isNutritionImageLoading}
                         className="hidden"
                         id="c-group-nutrition-input"
                       />
                       <label
                         htmlFor="c-group-nutrition-input"
-                        className="block cursor-pointer"
-                        onClick={() => setCGroupFocusedArea('nutrition')}
+                        className={`block ${isNutritionImageLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
+                        onClick={() => !isNutritionImageLoading && setCGroupFocusedArea('nutrition')}
                       >
                         <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-[#ccff00]/50 transition-all bg-black/20">
                           <FileText className="w-6 h-6 text-gray-400 mx-auto mb-2" />
@@ -3126,9 +3148,7 @@ export default function Home() {
                                 className="w-full h-full object-contain"
                               />
                               <button
-                                onClick={() => {
-                                  setCGroupNutritionImages((prev) => prev.filter((_, i) => i !== idx));
-                                }}
+                                onClick={() => removeNutritionImage(idx)}
                                 className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                               >
                                 <X className="w-3 h-3 text-white" />
@@ -3168,8 +3188,8 @@ export default function Home() {
 
                 {/* 분석 시작 버튼 */}
                 <RippleButton
-                  onClick={handleCAnalyze}
-                  disabled={(cGroupProductImages.length === 0 && cGroupNutritionImages.length === 0) || isCAnalyzing}
+                  onClick={() => runCAnalysis(apiKey)}
+                  disabled={(cGroupProductImages.length === 0 && cGroupNutritionImages.length === 0) || isCAnalyzing || isProductImageLoading || isNutritionImageLoading}
                   className="w-full mt-4 px-6 py-3 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_20px_rgba(204,255,0,0.5)] hover:shadow-[0_0_30px_rgba(204,255,0,0.7)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isCAnalyzing ? (
@@ -3202,21 +3222,21 @@ export default function Home() {
                     {/* 왼쪽: 폼 영역 */}
                     <div className="space-y-6">
                       {/* Group 1: 제품 스펙 */}
-                      <div className="space-y-4">
+                  <div className="space-y-4">
                         <h4 className="text-sm font-semibold text-gray-300 border-b border-white/10 pb-2">제품 스펙</h4>
                         {/* 제품명 (Full Width) */}
-                        <div>
+                    <div>
                           <label className="block text-xs text-gray-400 mb-1">제품명</label>
-                          <input
-                            type="text"
+                      <input
+                        type="text"
                             value={cGroupFormData.name}
                             onChange={(e) => setCGroupFormData({ ...cGroupFormData, name: e.target.value })}
                             className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                          />
-                        </div>
+                      />
+                    </div>
 
                         {/* 쿠팡링크 (Full Width) */}
-                        <div>
+                    <div>
                           <label className="block text-xs text-gray-400 mb-1">쿠팡링크</label>
                           <input
                             type="url"
@@ -3230,40 +3250,70 @@ export default function Home() {
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           <div>
                             <label className="block text-xs text-gray-400 mb-1">맛</label>
-                            <input
-                              type="text"
+                      <input
+                        type="text"
                               value={cGroupFormData.flavor}
                               onChange={(e) => setCGroupFormData({ ...cGroupFormData, flavor: e.target.value })}
                               className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                            />
-                          </div>
-                          <div>
+                      />
+                    </div>
+                    <div>
                             <label className="block text-xs text-gray-400 mb-1">용량</label>
-                            <input
-                              type="text"
+                      <input
+                        type="text"
                               value={cGroupFormData.amount}
                               onChange={(e) => setCGroupFormData({ ...cGroupFormData, amount: e.target.value })}
                               placeholder="예: 2kg"
                               className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                            />
-                          </div>
-                          <div>
+                      />
+                    </div>
+                      <div>
                             <label className="block text-xs text-gray-400 mb-1">대분류</label>
-                            <input
-                              type="text"
-                              value={cGroupFormData.category}
-                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, category: e.target.value })}
-                              className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                            />
+                            <div className="relative">
+                              <select
+                                value={cGroupFormData.category || '단백질 보충제'}
+                                onChange={(e) => {
+                                  const newCategory = e.target.value;
+                                  // 대분류 변경 시 소분류 초기화
+                                  setCGroupFormData({ 
+                                    ...cGroupFormData, 
+                                    category: newCategory,
+                                    sub_category: '' // 소분류 초기화
+                                  });
+                                }}
+                                className="w-full px-3 py-2 pr-10 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm appearance-none focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition cursor-pointer"
+                              >
+                                <option value="단백질 보충제" className="bg-gray-900 text-white">단백질 보충제</option>
+                                <option value="운동보조제" className="bg-gray-900 text-white">운동보조제</option>
+                                <option value="단백질 드링크" className="bg-gray-900 text-white">단백질 드링크</option>
+                                <option value="단백질 간식" className="bg-gray-900 text-white">단백질 간식</option>
+                                <option value="기타 간식" className="bg-gray-900 text-white">기타 간식</option>
+                                <option value="영양제" className="bg-gray-900 text-white">영양제</option>
+                                <option value="닭가슴살" className="bg-gray-900 text-white">닭가슴살</option>
+                              </select>
+                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                            </div>
                           </div>
                           <div>
                             <label className="block text-xs text-gray-400 mb-1">소분류</label>
-                            <input
-                              type="text"
-                              value={cGroupFormData.sub_category}
-                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, sub_category: e.target.value })}
-                              className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                            />
+                            <div className="relative">
+                              <select
+                                value={cGroupFormData.sub_category}
+                                onChange={(e) => setCGroupFormData({ ...cGroupFormData, sub_category: e.target.value })}
+                                disabled={!cGroupFormData.category}
+                                className="w-full px-3 py-2 pr-10 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm appearance-none focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              >
+                                <option value="" className="bg-gray-900 text-white">
+                                  {cGroupFormData.category ? '선택하세요' : '대분류를 먼저 선택하세요'}
+                                </option>
+                                {cGroupFormData.category && CATEGORY_OPTIONS[cGroupFormData.category]?.map((subCategory) => (
+                                  <option key={subCategory} value={subCategory} className="bg-gray-900 text-white">
+                                    {subCategory}
+                                  </option>
+                                ))}
+                              </select>
+                              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -3275,8 +3325,8 @@ export default function Home() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-xs text-gray-400 mb-1">1회 섭취량 (g)</label>
-                            <input
-                              type="number"
+                        <input
+                          type="number"
                               value={cGroupFormData.gram}
                               onChange={(e) => setCGroupFormData({ ...cGroupFormData, gram: e.target.value })}
                               onFocus={() => setCGroupFocusedField('gram')}
@@ -3286,24 +3336,24 @@ export default function Home() {
                                   ? 'border-green-400 focus:border-green-400 focus:ring-green-400/20'
                                   : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
                               }`}
-                            />
-                          </div>
-                          <div>
+                        />
+                      </div>
+                      <div>
                             <label className="block text-xs text-gray-400 mb-1">총 서빙 횟수</label>
-                            <input
-                              type="number"
+                        <input
+                          type="number"
                               value={cGroupFormData.scoops}
                               onChange={(e) => setCGroupFormData({ ...cGroupFormData, scoops: e.target.value })}
                               className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                            />
-                          </div>
+                        />
+                      </div>
                         </div>
 
                         {/* 칼로리 (kcal) */}
-                        <div>
+                      <div>
                           <label className="block text-xs text-gray-400 mb-1">칼로리 (kcal)</label>
-                          <input
-                            type="number"
+                        <input
+                          type="number"
                             value={cGroupFormData.calorie}
                             onChange={(e) => setCGroupFormData({ ...cGroupFormData, calorie: e.target.value })}
                             onFocus={() => setCGroupFocusedField('calorie')}
@@ -3313,14 +3363,14 @@ export default function Home() {
                                 ? 'border-purple-400 focus:border-purple-400 focus:ring-purple-400/20'
                                 : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
                             }`}
-                          />
-                        </div>
+                        />
+                      </div>
 
                         {/* 지방 (fat) */}
-                        <div>
+                      <div>
                           <label className="block text-xs text-gray-400 mb-1">지방 (g)</label>
-                          <input
-                            type="number"
+                        <input
+                          type="number"
                             value={cGroupFormData.fat}
                             onChange={(e) => setCGroupFormData({ ...cGroupFormData, fat: e.target.value })}
                             onFocus={() => setCGroupFocusedField('fat')}
@@ -3330,15 +3380,15 @@ export default function Home() {
                                 ? 'border-blue-400 focus:border-blue-400 focus:ring-blue-400/20'
                                 : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
                             }`}
-                          />
-                        </div>
+                        />
+                      </div>
 
                         {/* 총 탄수화물 (total_carb) | 당류 (sugar) */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
+                      <div>
                             <label className="block text-xs text-gray-400 mb-1">총 탄수화물 (g)</label>
-                            <input
-                              type="number"
+                        <input
+                          type="number"
                               value={cGroupFormData.total_carb}
                               onChange={(e) => setCGroupFormData({ ...cGroupFormData, total_carb: e.target.value })}
                               onFocus={() => setCGroupFocusedField('carb')}
@@ -3348,8 +3398,8 @@ export default function Home() {
                                   ? 'border-orange-400 focus:border-orange-400 focus:ring-orange-400/20'
                                   : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
                               }`}
-                            />
-                          </div>
+                        />
+                      </div>
                           <div>
                             <label className="block text-xs text-gray-400 mb-1">당류 (g)</label>
                             <input
@@ -3364,7 +3414,7 @@ export default function Home() {
                                   : 'border-white/10 focus:border-[#ccff00] focus:ring-[#ccff00]/20'
                               }`}
                             />
-                          </div>
+                    </div>
                         </div>
 
                         {/* 단백질 (protein) - 강조 */}
@@ -3407,11 +3457,69 @@ export default function Home() {
                             setNutritionImageMagnifier(prev => ({ ...prev, isHovering: false }));
                           }}
                           onClick={() => setIsNutritionImageZoomed(true)}
+                          onKeyDown={(e) => {
+                            // 키보드 네비게이션 지원 (좌우 방향키)
+                            if (e.key === 'ArrowLeft' && cGroupNutritionImages.length > 1) {
+                              e.preventDefault();
+                              const newIndex = currentNutritionImageIndex > 0 
+                                ? currentNutritionImageIndex - 1 
+                                : cGroupNutritionImages.length - 1;
+                              setCurrentNutritionImageIndex(newIndex);
+                            } else if (e.key === 'ArrowRight' && cGroupNutritionImages.length > 1) {
+                              e.preventDefault();
+                              const newIndex = currentNutritionImageIndex < cGroupNutritionImages.length - 1 
+                                ? currentNutritionImageIndex + 1 
+                                : 0;
+                              setCurrentNutritionImageIndex(newIndex);
+                            }
+                          }}
+                          tabIndex={0}
                         >
+                          {/* 이전 버튼 */}
+                          {cGroupNutritionImages.length > 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newIndex = currentNutritionImageIndex > 0 
+                                  ? currentNutritionImageIndex - 1 
+                                  : cGroupNutritionImages.length - 1;
+                                setCurrentNutritionImageIndex(newIndex);
+                              }}
+                              className="absolute left-2 top-1/2 -translate-y-1/2 z-20 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-all backdrop-blur-sm"
+                              aria-label="이전 이미지"
+                            >
+                              <ChevronLeft className="w-5 h-5" />
+                            </button>
+                          )}
+
+                          {/* 다음 버튼 */}
+                          {cGroupNutritionImages.length > 1 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const newIndex = currentNutritionImageIndex < cGroupNutritionImages.length - 1 
+                                  ? currentNutritionImageIndex + 1 
+                                  : 0;
+                                setCurrentNutritionImageIndex(newIndex);
+                              }}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 z-20 p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-all backdrop-blur-sm"
+                              aria-label="다음 이미지"
+                            >
+                              <ChevronRight className="w-5 h-5" />
+                            </button>
+                          )}
+
+                          {/* 페이지 표시 */}
+                          {cGroupNutritionImages.length > 1 && (
+                            <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-20 px-3 py-1 bg-black/50 backdrop-blur-sm rounded-full text-white text-xs font-medium">
+                              {currentNutritionImageIndex + 1} / {cGroupNutritionImages.length}
+                            </div>
+                          )}
+
                           <img
                             ref={nutritionImageRef}
-                            src={cGroupNutritionImages[0]}
-                            alt="Nutrition facts"
+                            src={cGroupNutritionImages[currentNutritionImageIndex] || cGroupNutritionImages[0]}
+                            alt={`Nutrition facts ${currentNutritionImageIndex + 1}`}
                             className="w-full h-auto transition-transform duration-100 ease-out"
                             style={{
                               transform: nutritionImageMagnifier.isHovering 
@@ -3615,7 +3723,7 @@ export default function Home() {
 
                     {/* 우측: 보관함 저장 버튼 (형광 그린 강조) */}
                     <RippleButton
-                      onClick={handleCSaveToA}
+                      onClick={handleCSaveToAWrapper}
                       disabled={cGroupSaved || isCSaving}
                       className="flex-1 px-6 py-4 bg-[#ccff00] text-black font-bold text-lg rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_30px_rgba(204,255,0,0.7)] hover:shadow-[0_0_40px_rgba(204,255,0,0.9)] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
