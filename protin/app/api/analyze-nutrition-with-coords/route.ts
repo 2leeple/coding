@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const BASE_URL = process.env.NEXT_PUBLIC_APP_URL || 
+                 (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) || 
+                 'http://localhost:3000';
+
 export async function POST(request: NextRequest) {
   try {
     const { imageDataUrl, apiKey } = await request.json();
@@ -149,10 +153,10 @@ export async function POST(request: NextRequest) {
         height: originalHeight,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error analyzing nutrition with coords:', error);
     return NextResponse.json(
-      { error: 'Failed to analyze nutrition facts' },
+      { error: error.message || 'Failed to analyze nutrition facts' },
       { status: 500 }
     );
   }
@@ -161,12 +165,7 @@ export async function POST(request: NextRequest) {
 // Gemini로 폴백하는 함수
 async function fallbackToGemini(imageDataUrl: string, apiKey: string) {
   try {
-    // 서버 사이드에서는 절대 경로가 필요함
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 
-                    process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 
-                    'http://localhost:3000';
-    
-    const res = await fetch(`${baseUrl}/api/gemini`, {
+    const res = await fetch(`${BASE_URL}/api/gemini`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -184,6 +183,18 @@ async function fallbackToGemini(imageDataUrl: string, apiKey: string) {
         mode: 'detailed',
       }),
     });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      let errorMessage = 'Failed to analyze nutrition facts with Gemini';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorMessage;
+      } catch {
+        errorMessage = errorText || errorMessage;
+      }
+      throw new Error(errorMessage);
+    }
 
     const data = await res.json();
     let extractedData: Record<string, string> = {};
@@ -203,10 +214,10 @@ async function fallbackToGemini(imageDataUrl: string, apiKey: string) {
         height: 1000,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Gemini fallback error:', error);
     return NextResponse.json(
-      { error: 'Failed to analyze nutrition facts' },
+      { error: error.message || 'Failed to analyze nutrition facts' },
       { status: 500 }
     );
   }

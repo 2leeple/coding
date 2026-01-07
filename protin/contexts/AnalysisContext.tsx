@@ -19,6 +19,7 @@ export interface CGroupFormData {
   calorie: string;
   gram: string;
   total_carb: string;
+  reviewCount?: string;
 }
 
 export interface NutritionHighlight {
@@ -39,8 +40,8 @@ interface AnalysisContextType {
   isSaving: boolean;
   saved: boolean;
   removingBg: Set<number>; // 상품 이미지 배경 제거 중인 인덱스들 (하위 호환성)
-  isProductImageLoading: boolean; // 상품 이미지 처리 중
-  isNutritionImageLoading: boolean; // 성분표 이미지 처리 중
+  productLoading: boolean; // 상품 이미지 처리 중 (왼쪽 전용)
+  nutritionLoading: boolean; // 성분표 이미지 처리 중 (오른쪽 전용)
   focusedArea: 'product' | 'nutrition' | null;
   nutritionHighlights: NutritionHighlight[];
   nutritionImageMeta: { width: number; height: number } | null;
@@ -71,7 +72,7 @@ const initialFormData: CGroupFormData = {
   link: '',
   flavor: '',
   amount: '',
-  category: '단백질 보충제',
+  category: '',
   sub_category: '',
   protein: '',
   scoops: '',
@@ -80,6 +81,7 @@ const initialFormData: CGroupFormData = {
   calorie: '',
   gram: '',
   total_carb: '',
+  reviewCount: '',
 };
 
 export function AnalysisProvider({ children }: { children: ReactNode }) {
@@ -93,8 +95,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [removingBg, setRemovingBg] = useState<Set<number>>(new Set());
-  const [isProductImageLoading, setIsProductImageLoading] = useState(false);
-  const [isNutritionImageLoading, setIsNutritionImageLoading] = useState(false);
+  const [productLoading, setProductLoading] = useState(false);
+  const [nutritionLoading, setNutritionLoading] = useState(false);
   const [focusedArea, setFocusedArea] = useState<'product' | 'nutrition' | null>(null);
   const [nutritionHighlights, setNutritionHighlights] = useState<NutritionHighlight[]>([]);
   const [nutritionImageMeta, setNutritionImageMeta] = useState<{ width: number; height: number } | null>(null);
@@ -114,10 +116,28 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
 
     // 백그라운드 제거 시작
     setRemovingBg((prev) => new Set(prev).add(insertIndex));
-    setIsProductImageLoading(true);
+    setProductLoading(true);
 
     try {
-      const blob = await removeBackground(imageDataUrl);
+      // Base64 데이터 URL을 Blob으로 변환
+      let imageBlob: Blob;
+      
+      if (imageDataUrl.startsWith('data:')) {
+        // Base64 데이터 URL을 Blob으로 변환
+        const response = await fetch(imageDataUrl);
+        imageBlob = await response.blob();
+      } else if (imageDataUrl.startsWith('blob:')) {
+        // Blob URL을 Blob으로 변환
+        const response = await fetch(imageDataUrl);
+        imageBlob = await response.blob();
+      } else {
+        // URL 문자열인 경우 직접 fetch
+        const response = await fetch(imageDataUrl);
+        imageBlob = await response.blob();
+      }
+
+      // Blob을 removeBackground에 전달
+      const blob = await removeBackground(imageBlob);
       const processedUrl = URL.createObjectURL(blob);
 
       // 처리된 이미지로 교체
@@ -135,7 +155,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         newSet.delete(insertIndex);
         // 모든 처리가 완료되었는지 확인
         if (newSet.size === 0) {
-          setIsProductImageLoading(false);
+          setProductLoading(false);
         }
         return newSet;
       });
@@ -145,15 +165,15 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
   // 상품 이미지 제거
   const removeProductImage = useCallback((index: number) => {
     setProductImages((prev) => prev.filter((_, i) => i !== index));
-    setRemovingBg((prev) => {
-      const newSet = new Set(prev);
-      newSet.delete(index);
-      // 모든 처리가 완료되었는지 확인
-      if (newSet.size === 0) {
-        setIsProductImageLoading(false);
-      }
-      return newSet;
-    });
+      setRemovingBg((prev) => {
+        const newSet = new Set(prev);
+        newSet.delete(index);
+        // 모든 처리가 완료되었는지 확인
+        if (newSet.size === 0) {
+          setProductLoading(false);
+        }
+        return newSet;
+      });
   }, []);
 
   // 성분표 이미지 추가
@@ -168,6 +188,35 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
       setCurrentNutritionImageIndex(currentNutritionImageIndex - 1);
     }
   }, [currentNutritionImageIndex, nutritionImages.length]);
+
+  // Blob URL을 Base64로 변환하는 유틸리티 함수
+  const urlToBase64 = async (url: string): Promise<string> => {
+    // 이미 Base64 데이터 URL인 경우
+    if (url.startsWith('data:')) {
+      const base64Data = url.split(',')[1];
+      return base64Data || url;
+    }
+    
+    // Blob URL인 경우
+    try {
+      const response = await fetch(url);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          // "data:image/png;base64," 같은 접두사(Prefix)를 제거하고 순수 데이터만 추출
+          const base64Data = base64String.split(',')[1] || base64String;
+          resolve(base64Data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error('Failed to convert URL to base64:', error);
+      throw error;
+    }
+  };
 
   // 분석 실행
   const runAnalysis = useCallback(async (apiKey: string) => {
@@ -189,44 +238,93 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     
     if (nutritionImages.length > 0) {
       try {
+        // Blob URL을 Base64로 변환
+        const nutritionImageUrl = nutritionImages[currentNutritionImageIndex] || nutritionImages[0];
+        const nutritionImageBase64 = await urlToBase64(nutritionImageUrl);
+        
         const nutritionRes = await fetch('/api/analyze-nutrition-with-coords', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            imageDataUrl: nutritionImages[currentNutritionImageIndex] || nutritionImages[0],
+            imageDataUrl: nutritionImageBase64,
             apiKey,
           }),
         });
 
-        if (nutritionRes.ok) {
-          const nutritionData = await nutritionRes.json();
-          nutritionHighlights = nutritionData.highlights || [];
-          setNutritionHighlights(nutritionHighlights);
-          
-          if (nutritionData.meta) {
-            setNutritionImageMeta(nutritionData.meta);
+        if (!nutritionRes.ok) {
+          // 서버 에러 메시지 읽기
+          let errorMessage = '영양성분 분석에 실패했습니다';
+          try {
+            const errorData = await nutritionRes.json();
+            errorMessage = errorData.error || errorMessage;
+          } catch {
+            try {
+              const errorText = await nutritionRes.text();
+              errorMessage = errorText || errorMessage;
+            } catch {
+              // 읽기 실패 시 기본 메시지 사용
+            }
           }
-          
-          if (nutritionData.extractedData) {
-            const extracted = nutritionData.extractedData;
-            setFormData((prev) => ({
-              ...prev,
-              protein: extracted.protein?.replace('g', '') || prev.protein,
-              sugar: extracted.sugar?.replace('g', '') || prev.sugar,
-              fat: extracted.fat?.replace('g', '') || prev.fat,
-              total_carb: extracted.carb?.replace('g', '') || prev.total_carb,
-              calorie: extracted.calorie?.replace('kcal', '') || prev.calorie,
-              gram: extracted.gram?.replace('g', '') || prev.gram,
-            }));
-          }
+          toast.error(errorMessage);
+          setIsAnalyzing(false);
+          return; // 에러 발생 시 여기서 종료 (setAnalysisResult 실행하지 않음)
         }
-      } catch (error) {
+
+        const nutritionData = await nutritionRes.json();
+        nutritionHighlights = nutritionData.highlights || [];
+        setNutritionHighlights(nutritionHighlights);
+        
+        if (nutritionData.meta) {
+          setNutritionImageMeta(nutritionData.meta);
+        }
+        
+        if (nutritionData.extractedData) {
+          const extracted = nutritionData.extractedData;
+          
+          // 숫자 또는 문자열을 처리하는 헬퍼 함수
+          const cleanValue = (value: any, unit: string): string => {
+            if (value === null || value === undefined) return '';
+            if (typeof value === 'number') return value.toString();
+            if (typeof value === 'string') {
+              return value.replace(unit, '').trim();
+            }
+            return '';
+          };
+          
+          setFormData((prev) => ({
+            ...prev,
+            protein: cleanValue(extracted.protein, 'g') || prev.protein,
+            sugar: cleanValue(extracted.sugar, 'g') || prev.sugar,
+            fat: cleanValue(extracted.fat, 'g') || prev.fat,
+            total_carb: cleanValue(extracted.carb, 'g') || prev.total_carb,
+            calorie: cleanValue(extracted.calorie, 'kcal') || prev.calorie,
+            gram: cleanValue(extracted.gram, 'g') || prev.gram,
+          }));
+        }
+      } catch (error: any) {
         console.error('Failed to analyze nutrition with coords:', error);
+        toast.error(error.message || '영양성분 분석 중 오류가 발생했습니다');
+        setIsAnalyzing(false);
+        return; // 에러 발생 시 여기서 종료 (setAnalysisResult 실행하지 않음)
       }
     }
 
-    // 두 그룹의 이미지를 합치기
-    const allImages = [...productImages, ...nutritionImages];
+    // Blob URL을 Base64로 변환
+    let allImages: string[] = [];
+    try {
+      const productBase64 = await Promise.all(
+        productImages.map(img => urlToBase64(img))
+      );
+      const nutritionBase64 = await Promise.all(
+        nutritionImages.map(img => urlToBase64(img))
+      );
+      allImages = [...productBase64, ...nutritionBase64];
+    } catch (error: any) {
+      console.error('Failed to convert images to base64:', error);
+      toast.error('이미지 변환 중 오류가 발생했습니다: ' + (error.message || '알 수 없는 오류'));
+      setIsAnalyzing(false);
+      return;
+    }
 
     // AI 프롬프트 (기존과 동일)
     const prompt = `⚠️ 중요: 모든 텍스트 출력은 반드시 한국어로 해야 합니다.
@@ -248,6 +346,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
 - 상품의 앞면, 뒷면, 포장 이미지
 - 제품명, 브랜드, 맛, 용량 등의 정보를 추출하라
 - 이미지에 보이는 텍스트만 추출하라 (추측하지 마라)
+- **브랜드명**: 포장에서 브랜드명을 추출하고, 이를 한국어로 번역하라 (예: 'MusclePharm' -> '머슬팜', 'MyProtein' -> '마이프로틴', 'Optimum Nutrition' -> '옵티멈 뉴트리션')
 
 **두 번째 그룹 (Nutrition Facts Label):**
 - 영양성분표, 함량표
@@ -274,8 +373,29 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
    - 예: "Cookies and Cream" -> "쿠키앤크림"
    - 예: "Chocolate Peanut Butter" -> "초콜릿 피넛 버터"
 
-3. **대분류 (category)**: 
-   - 항상 "단백질 보충제"로 고정하라 (변경하지 마라)
+3. **대분류 (category) - 엄격한 분류 규칙 (STRICT CLASSIFICATION RULES)**:
+   ⚠️ **CRITICAL**: 다음 규칙을 엄격하게 따르라. 잘못된 분류는 심각한 오류다.
+   
+   **운동보조제 (Workout Supplement)**: 
+   - 제품명이나 성분에 'BCAA', 'Amino', 'Creatine', 'Glutamine', 'Pre-workout', 'Arginine', 'Carnitine', 'Beta-Alanine', 'Taurine'이 포함된 경우
+   - **절대 '단백질 보충제'로 분류 금지**
+   - 예: "BCAA 5000" -> "운동보조제"
+   - 예: "Amino Energy" -> "운동보조제"
+   - 예: "Creatine Monohydrate" -> "운동보조제"
+   - ⚠️ **If the product is BCAA, incorrectly classifying it as Protein is a CRITICAL ERROR.**
+   
+   **단백질 보충제 (Protein Supplement)**:
+   - 'Whey', 'Isolate', 'Casein', 'Protein Powder', 'Protein'이 메인 제품인 경우
+   - 예: "Whey Protein" -> "단백질 보충제"
+   - 예: "Casein Protein" -> "단백질 보충제"
+   - 예: "Plant Protein" -> "단백질 보충제"
+   
+   **영양제 (Supplement/Vitamin)**:
+   - 'Vitamin', 'Omega', 'Probiotics', 'Multivitamin', '비타민', '오메가'가 포함된 경우
+   - 예: "Omega-3" -> "영양제"
+   - 예: "Multivitamin" -> "영양제"
+   
+   **우선순위**: 운동보조제 키워드가 있으면 먼저 확인하고, 없으면 단백질 보충제인지 확인하라.
 
 4. **소분류 (sub_category)**:
    - 성분표의 원재료를 분석하여 다음 중 하나를 선택하라:
@@ -289,10 +409,11 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
 다음 형식의 JSON으로 응답하라:
 {
   "name": "제품명 (한국어, 브랜드명 포함)",
+  "brand_kr": "브랜드 한글명 (예: '머슬팜', '마이프로틴', '옵티멈 뉴트리션')",
   "flavor": "맛 (한국어)",
   "amount": "용량 (예: 2.27kg)",
-  "category": "단백질 보충제",
-  "sub_category": "소분류 (WPC, WPI, 식물성, 카제인, 게이너, 선식(탄수), 마이프로틴, 국내(비추) 중 하나)",
+  "category": "대분류 (운동보조제, 단백질 보충제, 영양제 중 하나 - 위 규칙을 엄격하게 따를 것)",
+  "sub_category": "소분류 (WPC, WPI, 식물성, 카제인, 게이너, 선식(탄수), 마이프로틴, 국내(비추) 중 하나, category가 '단백질 보충제'인 경우만)",
   "protein": 숫자 (단백질 g),
   "scoops": 숫자 (총 서빙 횟수),
   "sugar": 숫자 (당류 g),
@@ -315,6 +436,25 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
           mode: 'detailed',
         }),
       });
+
+      if (!res.ok) {
+        // 서버 에러 메시지 읽기
+        let errorMessage = 'AI 분석에 실패했습니다';
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          try {
+            const errorText = await res.text();
+            errorMessage = errorText || errorMessage;
+          } catch {
+            // 읽기 실패 시 기본 메시지 사용
+          }
+        }
+        toast.error(errorMessage);
+        setIsAnalyzing(false);
+        return; // 에러 발생 시 종료
+      }
 
       const data = await res.json();
       let extractedData: any = {};
@@ -380,13 +520,18 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         return match ? match[1] : trimmed;
       };
 
+      // 브랜드 한글명 추출
+      const brandKr = extractedData.brand_kr || '';
+      
       setFormData({
         name: extractedData.name || '',
         link: cleanCoupangUrl(linkInput),
         flavor: extractedData.flavor || '',
         amount: extractedData.amount || '',
-        category: '단백질 보충제',
-        sub_category: mapSubCategoryToKorean(extractedData.sub_category || '', extractedData.name || ''),
+        category: extractedData.category || '',
+        sub_category: extractedData.category === '단백질 보충제' 
+          ? mapSubCategoryToKorean(extractedData.sub_category || '', extractedData.name || '')
+          : '',
         protein: formatNumericValue(extractedData.protein),
         scoops: formatNumericValue(extractedData.scoops),
         sugar: formatNumericValue(extractedData.sugar),
@@ -394,13 +539,14 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
         calorie: formatNumericValue(extractedData.calorie),
         gram: formatNumericValue(extractedData.gram),
         total_carb: formatNumericValue(extractedData.total_carb),
+        ...(brandKr && { brand_kr: brandKr } as any), // 브랜드 한글명을 formData에 추가 (타입 캐스팅)
       });
 
       setSaved(false);
       toast.success('✅ 상세 분석이 완료되었습니다!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to analyze:', error);
-      toast.error('분석 중 오류가 발생했습니다.');
+      toast.error(error.message || '분석 중 오류가 발생했습니다.');
     } finally {
       setIsAnalyzing(false);
     }
@@ -416,9 +562,12 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     setIsSaving(true);
 
     try {
+      // 브랜드 한글명 추출 (formData에서 가져오거나 빈 문자열)
+      const brandKr = (formData as any).brand_kr || '';
+      
       const newProduct = {
         name: formData.name,
-        brand: '',
+        brand: brandKr,
         flavor: formData.flavor,
         weight: formData.amount,
         category_large: formData.category,
@@ -488,8 +637,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     setIsSaving(false);
     setSaved(false);
     setRemovingBg(new Set());
-    setIsProductImageLoading(false);
-    setIsNutritionImageLoading(false);
+    setProductLoading(false);
+    setNutritionLoading(false);
     setFocusedArea(null);
     setNutritionHighlights([]);
     setNutritionImageMeta(null);
@@ -510,8 +659,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     isSaving,
     saved,
     removingBg,
-    isProductImageLoading,
-    isNutritionImageLoading,
+    productLoading,
+    nutritionLoading,
     focusedArea,
     nutritionHighlights,
     nutritionImageMeta,

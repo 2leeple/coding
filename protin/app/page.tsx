@@ -26,6 +26,8 @@ import {
   List,
   Download,
   ArrowRight,
+  ArrowDown,
+  ArrowUp,
   Maximize2,
   ZoomIn,
   ZoomOut,
@@ -37,11 +39,10 @@ type Tab = 'A' | 'B' | 'C';
 // 7대 카테고리 필터링 상수
 const FILTER_CATEGORIES = {
   '🥩 단백질 보충제': ['전체', 'WPC', 'WPI', '식물성', '카제인', '게이너', '선식(탄수)', '마이프로틴', '국내(비추)'],
-  '💪 운동보조제': ['전체', '크레아틴', '부스터', '아르기닌', '비트즙', '베타알라닌'],
+  '💪 운동보조제': ['전체', '크레아틴', '부스터', '아르기닌', '비트즙', '베타알라닌', '아미노산', 'EAA', '전해질', 'HMB', '카르니틴'],
   '🧃 단백질 드링크': ['전체', '단백질몰빵', '고단백두유', '탄수↑,당↓'],
   '🍫 단백질 간식': ['전체', '프로틴바', '칩', '프로틴쿠키', '씨리얼'],
-  '🍬 기타 간식': ['전체', '유제품', '오징어', '과일', '빵', '초콜릿', '기타'],
-  '💊 영양제': ['전체', '비타민D', '아연', '홍삼', '유산균', '종합비타민', '오메가3'],
+  '💊 영양제': ['전체', '비타민D', '비타민 D', '아연', '홍삼', '유산균', '종합비타민', '오메가3', 'CLA', '집중·인지', 'ZMA', '커큐민', '그린스', 'L-테아닌', '마그네슘', '머쉬룸', '마카', '아피제닌', '알파GPC', '초유(콜로스트럼)', '글루코사민', '히알루론산', '레스베라트롤'],
   '🐔 닭가슴살': ['전체', '스테이크', '소시지', '볼', '훈제', '소스'],
 } as const;
 
@@ -51,12 +52,11 @@ type CategorySmall = typeof FILTER_CATEGORIES[CategoryLarge][number];
 // C그룹 대분류-소분류 매핑 (이모지 제외)
 const CATEGORY_OPTIONS: Record<string, string[]> = {
   '단백질 보충제': ['WPC', 'WPI', '식물성', '카제인', '게이너', '선식(탄수)', '마이프로틴', '국내(비추)'],
-  '운동보조제': ['BCAA', '아르기닌', '크레아틴', '글루타민', '부스터(Pre-workout)', '기타'],
+  '운동보조제': ['BCAA', '아르기닌', '크레아틴', '글루타민', '부스터', 'EAA', '아미노산', '전해질', 'HMB', '카르니틴', '기타'],
   '단백질 드링크': ['RTD(음료)', '팩', '스파클링', '기타'],
   '단백질 간식': ['프로틴바', '쿠키', '칩', '젤리/양갱', '기타'],
-  '기타 간식': ['기타'],
   '닭가슴살': ['스테이크', '볼', '소세지', '훈제/수비드', '소스포함'],
-  '영양제': ['종합비타민', '오메가3', '유산균', '기타'],
+  '영양제': ['종합비타민', '오메가3', '유산균', 'CLA', '집중·인지', '비타민 D', 'ZMA', '커큐민', '그린스', 'L-테아닌', '마그네슘', '머쉬룸', '마카', '아피제닌', '알파GPC', '초유(콜로스트럼)', '글루코사민', '히알루론산', '레스베라트롤', '기타'],
   '기타': ['기타'],
 };
 
@@ -190,7 +190,7 @@ const RippleButton = ({
   ...props
 }: {
   children: React.ReactNode;
-  onClick?: () => void;
+  onClick?: (e?: React.MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   [key: string]: any;
 }) => {
@@ -216,7 +216,7 @@ const RippleButton = ({
       setRipples((prev) => prev.filter((r) => r.id !== newRipple.id));
     }, 600);
 
-    onClick?.();
+    onClick?.(e);
   };
 
   return (
@@ -334,11 +334,10 @@ const EditProductModal = ({
   // 카테고리 맵핑 (이모지 제거 버전)
   const CATEGORY_MAP: Record<string, string[]> = {
     '단백질 보충제': ['WPC', 'WPI', '식물성', '카제인', '게이너', '선식(탄수)', '마이프로틴', '국내(비추)'],
-    '운동보조제': ['크레아틴', '부스터', '아르기닌', '비트즙', '베타알라닌'],
+    '운동보조제': ['크레아틴', '부스터', '아르기닌', '비트즙', '베타알라닌', 'EAA', '아미노산', '전해질', 'HMB', '카르니틴'],
     '단백질 드링크': ['단백질몰빵', '고단백두유', '탄수↑,당↓'],
     '단백질 간식': ['프로틴바', '쿠키', '칩', '베이커리'],
-    '기타 간식': ['젤리', '초콜릿', '저당소스', '유제품', '오징어', '과일', '빵'],
-    '영양제': ['종합비타민', '오메가3', '유산균', '밀크씨슬', '비타민D', '아연', '홍삼'],
+    '영양제': ['종합비타민', '오메가3', '유산균', '밀크씨슬', '비타민D', '비타민 D', '아연', '홍삼', 'CLA', '집중·인지', 'ZMA', '커큐민', '그린스', 'L-테아닌', '마그네슘', '머쉬룸', '마카', '아피제닌', '알파GPC', '초유(콜로스트럼)', '글루코사민', '히알루론산', '레스베라트롤'],
     '닭가슴살': ['스테이크', '소시지', '볼', '훈제', '소스'],
   };
 
@@ -795,8 +794,8 @@ export default function Home() {
     isSaving: isCSaving,
     saved: cGroupSaved,
     removingBg: cGroupRemovingBg,
-    isProductImageLoading,
-    isNutritionImageLoading,
+    productLoading,
+    nutritionLoading,
     focusedArea: cGroupFocusedArea,
     nutritionHighlights: cGroupNutritionHighlights,
     nutritionImageMeta: cGroupNutritionImageMeta,
@@ -815,8 +814,19 @@ export default function Home() {
     setCurrentNutritionImageIndex,
     runAnalysis: runCAnalysis,
     saveToInventory: handleCSaveToA,
-    resetAll: handleCReset,
+    resetAll: resetAllFromContext,
   } = useAnalysis();
+  
+  // C그룹 전체 초기화 래퍼 (로컬 상태도 함께 초기화)
+  const handleCReset = () => {
+    resetAllFromContext();
+    // 상품 정보 분석 관련 로컬 상태 초기화
+    setProductInfoImage('');
+    setProductInfoUrlInput('');
+    if (productInfoFileInputRef.current) {
+      productInfoFileInputRef.current.value = '';
+    }
+  };
   
   // 로컬 UI 상태 (Context에 포함되지 않는 것들)
   const [nutritionImageLoaded, setNutritionImageLoaded] = useState(false);
@@ -825,32 +835,67 @@ export default function Home() {
   const [nutritionImageMagnifier, setNutritionImageMagnifier] = useState({ x: 50, y: 50, isHovering: false });
   const cGroupProductFileInputRef = useRef<HTMLInputElement>(null);
   const cGroupNutritionFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // 상품 정보 분석 탭 상태
+  const [productInfoImage, setProductInfoImage] = useState<string>('');
+  const [productInfoUrlInput, setProductInfoUrlInput] = useState<string>('');
+  const [productInfoLoading, setProductInfoLoading] = useState(false);
+  const productInfoFileInputRef = useRef<HTMLInputElement>(null);
   const nutritionImageRef = useRef<HTMLImageElement>(null);
   
-  // B그룹 (시장조사) - 리스트 스캔 모드 상태
-  const [bGroupListImages, setBGroupListImages] = useState<string[]>([]);
-  const [bGroupBrandFilter, setBGroupBrandFilter] = useState<string>('');
-  const [bGroupBundleExclude, setBGroupBundleExclude] = useState<number>(2);
-  const [bGroupListResults, setBGroupListResults] = useState<Array<{
+  // B그룹 (시장조사) - 전면 리뉴얼: 쿠팡 텍스트 세탁 & 1:1 비교 시스템
+  const [bGroupActiveSubTab, setBGroupActiveSubTab] = useState<'PARSER' | 'COMPARE'>('PARSER');
+  const [extractedProducts, setExtractedProducts] = useState<Array<{
     brand: string;
-    name: string;
+    title: string;
     flavor?: string;
-    weight_g?: number;
-    is_snack: boolean;
-    bundle_count: number;
-    status: 'new' | 'duplicate' | 'bundle' | 'brand' | 'snack';
-    excludeReason?: string;
+    weight?: string;
   }>>([]);
-  const [bGroupListExcluded, setBGroupListExcluded] = useState<Array<{
+  const [finalProducts, setFinalProducts] = useState<Array<{
     brand: string;
-    name: string;
+    title: string;
     flavor?: string;
-    weight_g?: number;
-    reason: string;
-    type: 'BRAND' | 'BUNDLE' | 'DUPLICATE';
+    weight?: string;
   }>>([]);
-  const [bGroupExcludedFilter, setBGroupExcludedFilter] = useState<'ALL' | 'BRAND' | 'BUNDLE' | 'DUPLICATE'>('ALL');
-  const [isBGroupListAnalyzing, setIsBGroupListAnalyzing] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<{ type: 'BRAND' | 'FLAVOR' | 'WEIGHT'; value: string } | null>(null);
+  const [bGroupParserText, setBGroupParserText] = useState<string>('');
+  const [isBGroupParsing, setIsBGroupParsing] = useState(false);
+  const [draggedProduct, setDraggedProduct] = useState<{ brand: string; title: string; flavor?: string; weight?: string } | null>(null);
+  const [isBSaving, setIsBSaving] = useState(false);
+
+  // 공백 무시 비교 함수 (스마트 필터)
+  const normalizeForMatch = (str: string): string => {
+    return str.replace(/\s+/g, '').toLowerCase();
+  };
+
+  // 필터 매칭 확인 함수
+  const isMatch = (value1: string, value2: string): boolean => {
+    return normalizeForMatch(value1) === normalizeForMatch(value2);
+  };
+
+  // 필터 조건 체크 함수 (정렬용)
+  const checkMatch = (product: { brand: string; title: string; flavor?: string; weight?: string }, filter: { type: 'BRAND' | 'FLAVOR' | 'WEIGHT'; value: string }): boolean => {
+    if (filter.type === 'BRAND') {
+      return isMatch(product.brand || '', filter.value);
+    } else if (filter.type === 'FLAVOR') {
+      return isMatch(product.flavor || '', filter.value);
+    } else if (filter.type === 'WEIGHT') {
+      return isMatch(product.weight || '', filter.value);
+    }
+    return false;
+  };
+
+  // 스마트 정렬된 분석 결과 (useMemo)
+  const sortedProducts = useMemo(() => {
+    if (!activeFilter) return extractedProducts;
+    
+    return [...extractedProducts].sort((a, b) => {
+      const matchA = checkMatch(a, activeFilter);
+      const matchB = checkMatch(b, activeFilter);
+      // 일치하는 항목을 앞으로 (-1), 일치하지 않는 항목을 뒤로 (1)
+      return matchA === matchB ? 0 : matchA ? -1 : 1;
+    });
+  }, [extractedProducts, activeFilter]);
   const [cGroupData, setCGroupData] = useState<Partial<Product>>({});
   const [cGroupImages, setCGroupImages] = useState<string[]>([]);
   const [toastMessage, setToastMessage] = useState<string>('');
@@ -859,6 +904,8 @@ export default function Home() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<CategoryLarge | null>(null);
   const [selectedSubCategory, setSelectedSubCategory] = useState<CategorySmall | null>(null);
+  const [selectedBrand, setSelectedBrand] = useState<string>('All');
+  const [selectedFlavor, setSelectedFlavor] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -966,29 +1013,27 @@ export default function Home() {
    - 예: "컴뱃 프로틴 파우더", "웨이 프로틴 아이솔레이트"
 
 3. Category_large (대분류) - 7대 카테고리 중 하나로 반드시 분류:
-   다음 7가지 카테고리 중 상품명과 특징을 보고 정확히 하나를 선택하세요:
+   다음 6가지 카테고리 중 상품명과 특징을 보고 정확히 하나를 선택하세요:
    
    🥩 "단백질 보충제": 프로틴 파우더, WPC, WPI, 식물성 단백질, 카제인, 게이너 등
-   💪 "운동보조제": 크레아틴, 부스터, 아르기닌, 비트즙, 베타알라닌 등
+   💪 "운동보조제": 크레아틴, 부스터, 아르기닌, 비트즙, 베타알라닌, EAA, 아미노산 등
    🧃 "단백질 드링크": 단백질 음료, 고단백 두유, 단백질몰빵 등
    🍫 "단백질 간식": 프로틴바, 프로틴 칩, 프로틴 쿠키, 씨리얼 등
-   🍬 "기타 간식": 유제품, 오징어, 과일, 빵, 초콜릿 등 (단백질이 아닌 일반 간식)
    💊 "영양제": 비타민D, 아연, 홍삼, 유산균, 종합비타민, 오메가3 등
    🐔 "닭가슴살": 닭가슴살 스테이크, 소시지, 볼, 훈제, 소스 등
    
    - 이미지 상단의 경로 텍스트가 있으면 그것을 우선 사용하세요
-   - 없으면 상품명과 특징을 보고 위 7가지 중 가장 적합한 것을 선택하세요
+   - 없으면 상품명과 특징을 보고 위 6가지 중 가장 적합한 것을 선택하세요
    - 이모지는 제외하고 텍스트만 반환하세요 (예: "단백질 보충제")
 
 4. Category_small (소분류):
    선택한 대분류에 따라 다음 소분류 중 하나를 선택하세요:
    
    단백질 보충제: "WPC", "WPI", "식물성", "카제인", "게이너", "선식(탄수)", "마이프로틴", "국내(비추)"
-   운동보조제: "크레아틴", "부스터", "아르기닌", "비트즙", "베타알라닌"
+   운동보조제: "크레아틴", "부스터", "아르기닌", "비트즙", "베타알라닌", "EAA", "아미노산", "전해질", "HMB", "카르니틴"
    단백질 드링크: "단백질몰빵", "고단백두유", "탄수↑,당↓"
    단백질 간식: "프로틴바", "칩", "프로틴쿠키", "씨리얼"
-   기타 간식: "유제품", "오징어", "과일", "빵", "초콜릿", "기타"
-   영양제: "비타민D", "아연", "홍삼", "유산균", "종합비타민", "오메가3"
+   영양제: "비타민D", "비타민 D", "아연", "홍삼", "유산균", "종합비타민", "오메가3", "CLA", "집중·인지", "ZMA", "커큐민", "그린스", "L-테아닌", "마그네슘", "머쉬룸", "마카", "아피제닌", "알파GPC", "초유(콜로스트럼)", "글루코사민", "히알루론산", "레스베라트롤"
    닭가슴살: "스테이크", "소시지", "볼", "훈제", "소스"
    
    - 경로 텍스트나 상품 특징에서 소분류를 추출하세요
@@ -1010,7 +1055,7 @@ export default function Home() {
 ✅ 반드시 지킬 것:
 - 이미지가 잘려서 일부만 보여도 최대한 텍스트를 복원해서 입력하세요
 - 위에서 아래까지 모든 상품을 추출하세요 (하나도 빠뜨리지 마세요)
-- category_large는 반드시 위 7가지 중 하나로 분류하세요 (이모지 제외)
+- category_large는 반드시 위 6가지 중 하나로 분류하세요 (이모지 제외)
 
 다음 형식의 JSON 배열로 응답하세요 (반드시 배열 형태):
 [
@@ -1542,21 +1587,30 @@ export default function Home() {
 
   // C그룹 엑셀용 복사 (탭으로 구분) - 엑셀 컬럼 순서와 일치
   const copyCGroupToExcel = async () => {
+    // 대분류 변환 함수
+    const convertCategory = (category: string): string => {
+      if (category === '단백질 보충제') return '보충제';
+      if (category === '운동보조제') return '보조제';
+      if (category === '단백질 드링크') return '드링크';
+      if (category === '단백질 간식') return '간식';
+      return category || '보충제';
+    };
+
     const fields = [
-      cGroupFormData.name,           // A열: 제품명 (한글)
-      cGroupFormData.link,           // B열: 쿠팡 링크
-      cGroupFormData.flavor,         // C열: 맛 (한글)
-      cGroupFormData.amount,         // D열: 용량 (예: 2.27kg)
-      '',                            // E열: source_url (빈 값)
-      cGroupFormData.category || '단백질 보충제', // F열: 대분류
-      cGroupFormData.sub_category,   // G열: 소분류 (WPC, WPI 등)
-      cGroupFormData.protein,        // H열: 단백질
-      cGroupFormData.scoops,         // I열: 총 서빙 횟수
-      cGroupFormData.sugar,          // J열: 당류
-      cGroupFormData.fat,            // K열: 지방
-      cGroupFormData.calorie,        // L열: 칼로리
-      cGroupFormData.gram,           // M열: 1회당 용량
-      cGroupFormData.total_carb,     // N열: 총 탄수화물
+      cGroupFormData.name,           // 제품명
+      cGroupFormData.link,           // 쿠팡링크 (vendorId 까지)
+      cGroupFormData.flavor,         // 맛
+      cGroupFormData.amount,         // 용량 (예: 1000mg, 200정)
+      convertCategory(cGroupFormData.category || '단백질 보충제'), // 대카테고리 (변환된 값)
+      cGroupFormData.sub_category,   // 소카테고리
+      cGroupFormData.protein,        // 단백질
+      cGroupFormData.scoops,         // 총 서빙
+      cGroupFormData.sugar,          // 당류
+      cGroupFormData.fat,            // 지방
+      cGroupFormData.calorie,        // 칼로리
+      cGroupFormData.gram,           // 1회당 용량
+      cGroupFormData.total_carb,     // 총 탄수
+      cGroupFormData.reviewCount || '', // 총 리뷰수
     ];
 
     const tabSeparated = fields.join('\t');
@@ -1660,6 +1714,600 @@ export default function Home() {
     return undefined;
   };
 
+  // 텍스트 정규화 및 동의어 처리
+  const normalizeForComparison = (text: string): string => {
+    if (!text) return '';
+    
+    // 소문자 변환
+    let normalized = text.toLowerCase();
+    
+    // 동의어 사전 적용
+    const synonymMap: Record<string, string> = {
+      'strawberry': '딸기',
+      '스트로베리': '딸기',
+      '딸기': '딸기',
+      'choco': '초콜릿',
+      'chocolate': '초콜릿',
+      '초코': '초콜릿',
+      '초콜렛': '초콜릿',
+      '초콜릿': '초콜릿',
+      'vanilla': '바닐라',
+      '바닐라': '바닐라',
+      'banana': '바나나',
+      '바나나': '바나나',
+      'cookie': '쿠키',
+      '쿠키': '쿠키',
+    };
+    
+    // 동의어 치환
+    for (const [key, value] of Object.entries(synonymMap)) {
+      const regex = new RegExp(key, 'gi');
+      normalized = normalized.replace(regex, value);
+    }
+    
+    // 불필요한 수식어 제거
+    const removeWords = ['맛', 'flavor', 'flavour', '프로틴', '단백질', '보충제', '쉐이크', 'shake', 'protein', 'supplement'];
+    for (const word of removeWords) {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      normalized = normalized.replace(regex, '');
+    }
+    
+    // 공백과 특수문자 제거
+    normalized = normalized.replace(/[\s\W_]/g, '');
+    
+    return normalized;
+  };
+
+  // 쿠팡 URL에서 ID 추출 (productId 또는 vendorItemId)
+  const extractCoupangId = (url: string): string | null => {
+    if (!url) return null;
+    
+    // vendorItemId 추출
+    const vendorMatch = url.match(/vendorItemId=(\d+)/);
+    if (vendorMatch) {
+      return vendorMatch[1];
+    }
+    
+    // productId 추출
+    const productMatch = url.match(/products\/(\d+)/);
+    if (productMatch) {
+      return productMatch[1];
+    }
+    
+    return null;
+  };
+
+  // 텍스트 토큰화 (한글: 2음절, 영어: 단어)
+  const tokenizeText = (text: string): string[] => {
+    if (!text) return [];
+    
+    const tokens: string[] = [];
+    
+    // 한글 2음절 단위 추출
+    const koreanRegex = /[\uAC00-\uD7A3]{2,}/g;
+    const koreanMatches = text.match(koreanRegex);
+    if (koreanMatches) {
+      for (const match of koreanMatches) {
+        // 2음절씩 슬라이싱
+        for (let i = 0; i < match.length - 1; i++) {
+          tokens.push(match.substring(i, i + 2));
+        }
+      }
+    }
+    
+    // 영어 단어 추출
+    const englishWords = text.match(/[a-z]+/gi);
+    if (englishWords) {
+      tokens.push(...englishWords);
+    }
+    
+    // 숫자 추출
+    const numbers = text.match(/\d+/g);
+    if (numbers) {
+      tokens.push(...numbers);
+    }
+    
+    return tokens.filter(token => token.length > 0);
+  };
+
+  // 브랜드 정규화 (한글/영어 매핑)
+  const normalizeBrand = (brand: string): string => {
+    if (!brand) return '';
+    
+    const brandMap: Record<string, string> = {
+      'musclepharm': '머슬팜',
+      '머슬팜': '머슬팜',
+      'optimum': '옵티멈',
+      '옵티멈': '옵티멈',
+      'optimum nutrition': '옵티멈',
+      'dymatize': '다이마타이즈',
+      '다이마타이즈': '다이마타이즈',
+      'myprotein': '마이프로틴',
+      '마이프로틴': '마이프로틴',
+      'bsn': '비에스엔',
+      '비에스엔': '비에스엔',
+      'cellucor': '셀루코어',
+      '셀루코어': '셀루코어',
+      'quest': '퀘스트',
+      '퀘스트': '퀘스트',
+      'isopure': '아이소퓨어',
+      '아이소퓨어': '아이소퓨어',
+    };
+    
+    const normalized = brand.toLowerCase().trim();
+    return brandMap[normalized] || normalized;
+  };
+
+  // 머슬팜 라인업 매핑 (한국어 발음 변형 및 수식어 포함)
+  const MP_LINEUP_MAP: Record<string, string[]> = {
+    "COMBAT_WHEY": [
+      "Combat 100% Whey", "Combat Ultra Whey", "Ultra Whey", "Sport Series",
+      "컴뱃 100% 웨이", "컴뱃 울트라 웨이", "울트라 웨이", "컴뱃 프로틴",
+      "컴배트", "컴배트 울트라", "울트라 프리미엄", "Ultra Premium",
+      "컴뱃", "컴배트 100%", "컴배트 울트라 웨이"
+    ],
+    "COMBAT_POWDER": [
+      "Combat Protein", "Combat Protein Powder", "Combat", "컴뱃", "컴배트", "컴뱃 프로틴", "컴배트 프로틴"
+    ],
+  };
+
+  // 라인업 정규화 (머슬팜 매핑 적용)
+  const normalizeLineupWithMap = (lineup: string): string => {
+    if (!lineup) return '';
+    
+    const normalized = lineup.toLowerCase().trim();
+    
+    // 머슬팜 라인업 매핑 확인
+    for (const [key, variants] of Object.entries(MP_LINEUP_MAP)) {
+      for (const variant of variants) {
+        if (normalized.includes(variant.toLowerCase()) || variant.toLowerCase().includes(normalized)) {
+          return key.toLowerCase();
+        }
+      }
+    }
+    
+    return normalized;
+  };
+
+  // 맛 정규화 강화 (띄어쓰기 제거, 불용어 제거, 동의어 처리)
+  const normalizeFlavor = (flavor: string): string => {
+    if (!flavor) return '';
+    
+    let normalized = flavor.toLowerCase().trim();
+    
+    // 동의어 사전
+    const synonymMap: Record<string, string> = {
+      'strawberry': '딸기',
+      '스트로베리': '딸기',
+      '딸기': '딸기',
+      'choco': '초콜릿',
+      'chocolate': '초콜릿',
+      '초코': '초콜릿',
+      '초콜렛': '초콜릿',
+      '초콜릿': '초콜릿',
+      'vanilla': '바닐라',
+      '바닐라': '바닐라',
+      'banana': '바나나',
+      '바나나': '바나나',
+      'cookie': '쿠키',
+      '쿠키': '쿠키',
+      'milk': '우유',
+      '밀크': '우유',
+      '우유': '우유',
+      'cream': '크림',
+      '크림': '크림',
+    };
+    
+    // 동의어 치환
+    for (const [key, value] of Object.entries(synonymMap)) {
+      const regex = new RegExp(key, 'gi');
+      normalized = normalized.replace(regex, value);
+    }
+    
+    // 띄어쓰기 제거
+    normalized = normalized.replace(/\s+/g, '');
+    
+    // 끝에 붙은 불용어 제거 ('맛', '향')
+    normalized = normalized.replace(/[맛향]$/g, '');
+    
+    // 특수 매핑: "바나나우유"와 "바나나" 통일
+    if (normalized.includes('바나나우유') || normalized === '바나나우유') {
+      normalized = '바나나';
+    }
+    
+    // "초콜릿"과 "초코" 통일
+    if (normalized.includes('초콜릿') || normalized === '초코') {
+      normalized = '초콜릿';
+    }
+    
+    return normalized;
+  };
+
+  // 맛 부분 일치 확인 (포함 관계 허용)
+  const compareFlavorPartial = (flavor1: string, flavor2: string): boolean => {
+    if (!flavor1 || !flavor2) return false;
+    
+    const norm1 = normalizeFlavor(flavor1);
+    const norm2 = normalizeFlavor(flavor2);
+    
+    // 정확히 일치
+    if (norm1 === norm2) return true;
+    
+    // 부분 일치 (포함 관계)
+    if (norm1.includes(norm2) || norm2.includes(norm1)) {
+      return true;
+    }
+    
+    return false;
+  };
+
+  // 용량 정규화 (숫자만 추출하여 오차 범위 ±5% 내 허용)
+  const normalizeCapacity = (weight: string | number | undefined, weight_g?: number): number | null => {
+    // weight_g가 있으면 우선 사용
+    if (weight_g !== undefined) {
+      return weight_g;
+    }
+    
+    if (!weight) return null;
+    
+    const weightGrams = parseWeightToGrams(weight);
+    return weightGrams !== undefined ? weightGrams : null;
+  };
+
+  // 용량 비교 (오차 범위 ±5% 내 허용)
+  const compareCapacity = (capacity1: number | null, capacity2: number | null): boolean => {
+    if (capacity1 === null || capacity2 === null) {
+      // 둘 다 없으면 일치로 간주
+      return capacity1 === null && capacity2 === null;
+    }
+    
+    const diff = Math.abs(capacity1 - capacity2);
+    const avg = (capacity1 + capacity2) / 2;
+    const tolerance = avg * 0.05; // ±5%
+    
+    return diff <= tolerance;
+  };
+
+  // 라인업 추출 (제목에서 핵심 키워드만 추출, 브랜드명 제거 강화)
+  const extractLineup = (title: string, brand: string): string => {
+    if (!title) return '';
+    
+    let lineup = title.toLowerCase().trim();
+    
+    // 브랜드명 제거 (한글/영어 모두)
+    if (brand) {
+      const brandNormalized = normalizeBrand(brand).toLowerCase();
+      const brandOriginal = brand.toLowerCase();
+      
+      // 정규화된 브랜드명 제거
+      lineup = lineup.replace(new RegExp(brandNormalized, 'gi'), '');
+      // 원본 브랜드명 제거
+      lineup = lineup.replace(new RegExp(brandOriginal, 'gi'), '');
+      
+      // 브랜드명 변형 제거 (예: "머슬팜", "MusclePharm", "MP")
+      const brandVariants = [
+        '머슬팜', 'musclepharm', 'mp', 'muscle', 'pharm',
+        '옵티멈', 'optimum', 'on', 'optimum nutrition',
+        '다이마타이즈', 'dymatize', 'dymatize nutrition',
+      ];
+      
+      for (const variant of brandVariants) {
+        const regex = new RegExp(`\\b${variant}\\b`, 'gi');
+        lineup = lineup.replace(regex, '');
+      }
+    }
+    
+    // 일반 명사 제거
+    const removeWords = [
+      'protein', 'whey', 'powder', '보충제', '맛', 'flavor', 'flavour',
+      'supplement', 'isolate', 'concentrate', 'wpc', 'wpi', 'casein',
+      'gainer', 'mass', 'bar', '바', '쿠키', 'cookie', '칩', 'chip',
+      'kg', 'g', 'lb', 'lbs', 'oz', 'ml', 'l', '개', '팩', '입',
+      '100%', '%', 'ultra', '울트라', 'premium', '프리미엄',
+    ];
+    
+    for (const word of removeWords) {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      lineup = lineup.replace(regex, '');
+    }
+    
+    // 숫자 제거 (용량 정보)
+    lineup = lineup.replace(/[\d.]+/g, '');
+    
+    // 맛 정보 제거 (동의어 처리된 맛)
+    const flavorWords = ['딸기', '초콜릿', '바닐라', '바나나', '쿠키', '우유', '밀크', '크림'];
+    for (const flavor of flavorWords) {
+      lineup = lineup.replace(new RegExp(flavor, 'gi'), '');
+    }
+    
+    // 공백과 특수문자 제거
+    lineup = lineup.replace(/[\s\W_]+/g, '').trim();
+    
+    // 머슬팜 라인업 매핑 적용
+    lineup = normalizeLineupWithMap(lineup);
+    
+    return lineup;
+  };
+
+  // 대분류(Category Class) 감지 함수
+  const detectCategoryClass = (title: string): 'BAR' | 'AMINO' | 'RTD' | 'POWDER' => {
+    if (!title) return 'POWDER';
+    
+    const lower = title.toLowerCase();
+    
+    // BAR (간식류) 키워드
+    const barKeywords = ['bar', 'crunch', 'cookie', 'wafer', 'brownie', '바', '크런치', '쿠키', '브라우니'];
+    for (const keyword of barKeywords) {
+      if (lower.includes(keyword)) {
+        return 'BAR';
+      }
+    }
+    
+    // AMINO (아미노산) 키워드
+    const aminoKeywords = ['bcaa', 'eaa', 'glutamine', 'amino', '글루타민', '아미노'];
+    for (const keyword of aminoKeywords) {
+      if (lower.includes(keyword)) {
+        return 'AMINO';
+      }
+    }
+    
+    // RTD (음료) 키워드
+    const rtdKeywords = ['drink', 'ready to', 'shake', 'beverage', '드링크', '음료'];
+    for (const keyword of rtdKeywords) {
+      if (lower.includes(keyword)) {
+        return 'RTD';
+      }
+    }
+    
+    // POWDER (파우더 - 기본값)
+    // 'Whey', 'Powder', 'Protein', 'Gainer', '웨이', '프로틴' 등이 있거나 키워드가 없으면 POWDER
+    return 'POWDER';
+  };
+
+  // 브랜드 정규화 (Strict Mode)
+  const getNormalizedBrand = (brand: string): string => {
+    if (!brand) return '';
+    
+    const normalized = brand.trim();
+    const lower = normalized.toLowerCase();
+    
+    // 머슬팜 계열
+    if (lower.includes('musclepharm') || lower.includes('머슬팜') || lower === 'mp') {
+      return 'MP';
+    }
+    
+    // 옵티멈 계열
+    if (lower.includes('optimum') || lower.includes('옵티멈') || lower === 'on') {
+      return 'ON';
+    }
+    
+    // 다이마타이즈
+    if (lower.includes('dymatize') || lower.includes('다이마타이즈')) {
+      return 'DYMATIZE';
+    }
+    
+    // 마이프로틴
+    if (lower.includes('myprotein') || lower.includes('마이프로틴')) {
+      return 'MYPROTEIN';
+    }
+    
+    // 공백 제거 및 대문자 변환
+    return normalized.replace(/\s+/g, '').toUpperCase();
+  };
+
+  // 맛 정규화 (Strict Mode)
+  const getNormalizedFlavor = (flavor: string): string => {
+    if (!flavor) return '';
+    
+    let normalized = flavor.trim();
+    
+    // 동의어 처리 (먼저 처리)
+    const synonymMap: Record<string, string> = {
+      'strawberry': '딸기',
+      '스트로베리': '딸기',
+      '딸기': '딸기',
+      'choco': '초코',
+      'chocolate': '초코',
+      '초코': '초코',
+      '초콜렛': '초코',
+      '초콜릿': '초코',
+      'vanilla': '바닐라',
+      '바닐라': '바닐라',
+      'banana': '바나나',
+      '바나나': '바나나',
+      'milk': '우유',
+      '밀크': '우유',
+      '우유': '우유',
+      'cream': '크림',
+      '크림': '크림',
+    };
+    
+    // 동의어 치환
+    for (const [key, value] of Object.entries(synonymMap)) {
+      const regex = new RegExp(key, 'gi');
+      normalized = normalized.replace(regex, value);
+    }
+    
+    // 접미사 제거 ('맛', '향', 'Flavor', 'Taste')
+    normalized = normalized.replace(/[맛향]$/gi, '');
+    normalized = normalized.replace(/\s*(flavor|flavour|taste)\s*$/gi, '');
+    
+    // 특수문자 및 공백 전체 제거
+    normalized = normalized.replace(/[\s\W_]+/g, '');
+    
+    // '우유', '밀크'가 포함되어 있으면 제거하지 말고 표준화 (예: '초콜릿밀크' -> '초코우유')
+    // 이미 동의어 치환에서 'milk'와 '밀크'가 '우유'로 변환되었으므로, '우유'가 포함된 경우 그대로 유지
+    
+    return normalized.toLowerCase();
+  };
+
+  // 용량 정규화 (Strict Mode - kg 단위로 환산)
+  const getNormalizedCapacity = (amount: string | number | undefined, weight_g?: number): number | null => {
+    // weight_g가 있으면 우선 사용 (이미 그램 단위)
+    if (weight_g !== undefined) {
+      return weight_g / 1000; // kg로 변환
+    }
+    
+    if (!amount) return null;
+    
+    const str = String(amount).toLowerCase().trim();
+    
+    // 숫자 추출
+    const numMatch = str.match(/([\d.]+)/);
+    if (!numMatch) return null;
+    
+    const num = parseFloat(numMatch[1]);
+    if (isNaN(num)) return null;
+    
+    // 단위 파악 및 kg로 환산
+    if (str.includes('lb') || str.includes('lbs')) {
+      // 파운드 -> kg (1 lb = 0.453592 kg)
+      return num * 0.453592;
+    } else if (str.includes('oz')) {
+      // 온스 -> kg (1 oz = 0.0283495 kg)
+      return num * 0.0283495;
+    } else if (str.includes('kg')) {
+      // 이미 kg
+      return num;
+    } else if (str.includes('g')) {
+      // 그램 -> kg
+      return num / 1000;
+    } else {
+      // 단위 없으면 기본적으로 kg로 가정 (1000 이상이면 g로 가정)
+      return num >= 1000 ? num / 1000 : num;
+    }
+  };
+
+  // 용량 비교 (100g 오차 허용)
+  const compareCapacityStrict = (capacity1: number | null, capacity2: number | null): boolean => {
+    if (capacity1 === null || capacity2 === null) {
+      // 둘 다 없으면 일치로 간주
+      return capacity1 === null && capacity2 === null;
+    }
+    
+    // 100g = 0.1kg 오차 허용
+    return Math.abs(capacity1 - capacity2) < 0.1;
+  };
+
+  // 라인업 시그니처 추출 (MP_LINEUP_MAP 활용)
+  const getLineupSignature = (title: string, brand: string): string => {
+    if (!title) return '';
+    
+    let lineup = title.toLowerCase().trim();
+    
+    // 브랜드명 제거
+    if (brand) {
+      const brandNormalized = getNormalizedBrand(brand).toLowerCase();
+      const brandVariants = [
+        'musclepharm', '머슬팜', 'mp',
+        'optimum', '옵티멈', 'on',
+        'dymatize', '다이마타이즈',
+      ];
+      
+      for (const variant of brandVariants) {
+        const regex = new RegExp(`\\b${variant}\\b`, 'gi');
+        lineup = lineup.replace(regex, '');
+      }
+    }
+    
+    // 일반 명사 제거
+    const removeWords = [
+      'protein', 'whey', 'powder', '보충제', '맛', 'flavor', 'flavour',
+      'supplement', 'isolate', 'concentrate', 'wpc', 'wpi', 'casein',
+      'gainer', 'mass', 'bar', '바', '쿠키', 'cookie', '칩', 'chip',
+      'kg', 'g', 'lb', 'lbs', 'oz', 'ml', 'l', '개', '팩', '입',
+      '100%', '%', 'ultra', '울트라', 'premium', '프리미엄',
+    ];
+    
+    for (const word of removeWords) {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      lineup = lineup.replace(regex, '');
+    }
+    
+    // 숫자 제거
+    lineup = lineup.replace(/[\d.]+/g, '');
+    
+    // 맛 정보 제거
+    const flavorWords = ['딸기', '초코', '초콜릿', '바닐라', '바나나', '쿠키', '우유', '밀크', '크림'];
+    for (const flavor of flavorWords) {
+      lineup = lineup.replace(new RegExp(flavor, 'gi'), '');
+    }
+    
+    // 공백과 특수문자 제거
+    lineup = lineup.replace(/[\s\W_]+/g, '').trim();
+    
+    // MP_LINEUP_MAP 활용하여 시그니처 생성
+    for (const [key, variants] of Object.entries(MP_LINEUP_MAP)) {
+      for (const variant of variants) {
+        const variantLower = variant.toLowerCase();
+        if (lineup.includes(variantLower) || variantLower.includes(lineup)) {
+          // 키가 이미 시그니처 형식이면 그대로 반환
+          return key;
+        }
+      }
+    }
+    
+    // 매핑되지 않으면 남은 텍스트를 대문자로 변환
+    return lineup.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  };
+
+  // 중복 판별 함수 (Strict Mode - 4단계 속성 비교)
+  const isStrictDuplicate = (
+    newItem: { brand?: string; name: string; flavor?: string; weight_g?: number },
+    savedProduct: Product
+  ): { isDuplicate: boolean; reason?: string } => {
+    // STEP 1: 브랜드 비교
+    const newBrand = getNormalizedBrand(newItem.brand || '');
+    const savedBrand = getNormalizedBrand(savedProduct.brand || '');
+    
+    if (newBrand !== savedBrand) {
+      console.log(`[중복제거] ${newItem.name} - 브랜드 불일치: [A] '${savedBrand}' vs [B] '${newBrand}'`);
+      return { isDuplicate: false };
+    }
+    
+    // STEP 2: 라인업 비교 (핵심!)
+    const newLineup = getLineupSignature(newItem.name, newItem.brand || '');
+    const savedLineup = getLineupSignature(savedProduct.name, savedProduct.brand || '');
+    
+    if (newLineup !== savedLineup) {
+      console.log(`[중복제거] ${newItem.name} - 라인업 불일치: [A] '${savedLineup}' vs [B] '${newLineup}'`);
+      return { isDuplicate: false };
+    }
+    
+    // STEP 3: 맛 비교 (둘 다 있을 때만)
+    const newFlavor = getNormalizedFlavor(newItem.flavor || '');
+    const savedFlavor = getNormalizedFlavor(savedProduct.flavor || '');
+    
+    if (newFlavor && savedFlavor) {
+      if (newFlavor !== savedFlavor) {
+        console.log(`[중복제거] ${newItem.name} - 맛 불일치: [A] '${savedFlavor}' vs [B] '${newFlavor}'`);
+        return { isDuplicate: false };
+      }
+    }
+    
+    // STEP 4: 용량 비교 (둘 다 있을 때만)
+    const newCapacity = getNormalizedCapacity(undefined, newItem.weight_g);
+    const savedCapacity = getNormalizedCapacity(savedProduct.weight);
+    
+    if (newCapacity !== null && savedCapacity !== null) {
+      if (!compareCapacityStrict(newCapacity, savedCapacity)) {
+        console.log(`[중복제거] ${newItem.name} - 용량 불일치: [A] ${savedCapacity}kg vs [B] ${newCapacity}kg`);
+        return { isDuplicate: false };
+      }
+    }
+    
+    // 모든 조건 충족 시 중복
+    const reasons: string[] = [];
+    if (newBrand) reasons.push(`브랜드:${newBrand}`);
+    if (newLineup) reasons.push(`라인업:${newLineup}`);
+    if (newFlavor && savedFlavor) reasons.push(`맛:${newFlavor}`);
+    if (newCapacity !== null && savedCapacity !== null) reasons.push(`용량:${newCapacity}kg`);
+    
+    const reason = reasons.join('/');
+    console.log(`[중복제거] ${newItem.name} (사유: ${reason} 일치)`);
+    return { isDuplicate: true, reason };
+  };
+
   // 리스트 스캔 모드: 분석 및 필터링
   const handleBGroupListAnalyze = async () => {
     if (!apiKey) {
@@ -1676,19 +2324,31 @@ export default function Home() {
     setBGroupListResults([]);
     setBGroupListExcluded([]);
 
-    const prompt = `제공된 여러 장의 이미지는 하나의 긴 상품 리스트를 캡처한 쿠팡 상품 목록 스크린샷입니다. 
+    const prompt = `Analyze the image and identify ALL visible supplement products.
+
+⚠️ CRITICAL RULES:
+1. **Do NOT search for this product online.** (온라인 검색 절대 금지)
+2. **Do NOT infer popular flavors.** (인기 맛 추론 금지)
+3. **Extract the product names listed in the image EXACTLY as they appear textually.** (이미지에 있는 텍스트 그대로 추출)
 
 중요:
+- 이미지 속에 상품이 몇 개가 있든 전부 리스트로 뽑아내라.
 - 중복되어 찍힌 상품이 있다면 하나로 합치고, 전체 리스트에서 유니크한 상품 정보만 추출하라.
 - 같은 상품이 여러 이미지에 나타나면 가장 명확한 정보를 사용하라.
+- 이미지에 'Strawberry'라고 적혀있으면 'Strawberry'로 추출하고, 'Double Chocolate'로 추론하지 마라.
+- 이미지에 '초콜릿'이라고 적혀있으면 '초콜릿'으로 추출하고, 다른 맛으로 추론하지 마라.
+- If the weight is in lbs, convert to kg. If flavor is implied (e.g., banana image), extract it.
 
-각 상품의 정보를 추출하여 다음 JSON 배열 형식으로 응답하라:
+Return a JSON array where each item contains: brand, lineup, flavor, weight_text, weight_kg (converted numeric value).
 
 [
   {
-    "brand": "브랜드명 (한글/영어)",
-    "name": "상품 전체 이름",
-    "flavor": "맛 정보 (있으면 추출, 없으면 빈 문자열)",
+    "brand": "브랜드명 (이미지에 적혀있는 그대로, 한글/영어)",
+    "lineup": "라인업/제품명 핵심 키워드 (예: 'Combat 100% Whey', '컴뱃 울트라 웨이')",
+    "name": "상품 전체 이름 (이미지에 적혀있는 그대로)",
+    "flavor": "맛 정보 (이미지에 명시적으로 적혀있으면 추출, 없으면 빈 문자열)",
+    "weight_text": "중량 텍스트 (예: '2.27kg', '5lbs', '2270g')",
+    "weight_kg": 숫자 (중량을 kg 단위로 변환한 값, 예: 2.27kg -> 2.27, 5lbs -> 2.27, 2270g -> 2.27),
     "weight_g": 숫자 (중량을 그램 단위로 추출, 예: 2.27kg -> 2270, 400g -> 400),
     "is_snack": true/false (단백질 간식류: 바, 쿠키, 칩 등이면 true),
     "bundle_count": 숫자 (상품명에 '2개', '3팩', 'x2', '2입' 등이 있으면 숫자 추출, 없으면 1)
@@ -1697,8 +2357,10 @@ export default function Home() {
 ]
 
 중요:
+- weight_kg는 중량을 kg 단위로 숫자만 추출 (lbs면 0.453592를 곱해서 변환, g면 1000으로 나눔)
 - weight_g는 중량을 그램(g) 단위로 숫자만 추출 (kg 단위면 1000을 곱해서 변환)
-- flavor는 상품명이나 설명에서 맛 정보를 추출 (예: "초콜릿", "바닐라", "딸기" 등)
+- flavor는 이미지에 명시적으로 적혀있는 맛 정보만 추출 (추론 금지)
+- lineup은 제품명에서 핵심 라인업 키워드를 추출 (예: "Combat", "컴뱃", "Gold Standard")
 - bundle_count는 상품명에서 묶음 정보를 추출 (예: "신타6 2.27kg x 2개" -> 2)
 - is_snack은 단백질 간식류인지 판단 (바, 쿠키, 칩 등)
 - 모든 상품을 빠짐없이 추출하라`;
@@ -1722,8 +2384,11 @@ export default function Home() {
       const data = await res.json();
       let listProducts: Array<{
         brand: string;
+        lineup?: string;
         name: string;
         flavor?: string;
+        weight_text?: string;
+        weight_kg?: number;
         weight_g?: number;
         is_snack: boolean;
         bundle_count: number;
@@ -1739,7 +2404,74 @@ export default function Home() {
         listProducts = data;
       }
 
-      // 정밀 중복 체크 함수 (400g 룰)
+      // weight_kg가 없으면 weight_g로부터 계산
+      listProducts = listProducts.map(item => ({
+        ...item,
+        weight_kg: item.weight_kg !== undefined ? item.weight_kg : (item.weight_g ? item.weight_g / 1000 : undefined),
+        weight_g: item.weight_g !== undefined ? item.weight_g : (item.weight_kg ? item.weight_kg * 1000 : undefined),
+      }));
+
+      // 사용자 지정 순서 비교 함수 (브랜드->대분류->맛->라인업->중량)
+      const analyzeProductStatus = (
+        scanned: typeof listProducts[0],
+        inventoryItems: Product[]
+      ): { status: 'NEW' | 'DUPLICATE' | 'VARIATION'; variationMessage?: string } => {
+        const scannedBrand = getNormalizedBrand(scanned.brand || '');
+        const scannedCategory = detectCategoryClass(scanned.name);
+        const scannedFlavor = getNormalizedFlavor(scanned.flavor || '');
+        const scannedLineup = scanned.lineup || getLineupSignature(scanned.name, scanned.brand || '');
+        const scannedWeightKg = scanned.weight_kg;
+
+        for (const inventory of inventoryItems) {
+          const inventoryBrand = getNormalizedBrand(inventory.brand || '');
+          const inventoryCategory = detectCategoryClass(inventory.name);
+          const inventoryFlavor = getNormalizedFlavor(inventory.flavor || '');
+          const inventoryLineup = getLineupSignature(inventory.name, inventory.brand || '');
+          const inventoryWeightKg = getNormalizedCapacity(inventory.weight);
+
+          // STEP 1: 브랜드 비교 (다르면 즉시 NEW)
+          if (scannedBrand !== inventoryBrand) {
+            continue; // 다른 브랜드이므로 다음 상품 확인
+          }
+
+          // STEP 2: 대분류(Category) 비교 (다르면 즉시 NEW)
+          if (scannedCategory !== inventoryCategory) {
+            continue; // 대분류가 다르면 완전 신규 (예: 파우더 vs 바)
+          }
+
+          // STEP 3: 맛 비교 (둘 다 있을 때만 수행, 다르면 즉시 NEW)
+          if (scannedFlavor && inventoryFlavor && scannedFlavor !== inventoryFlavor) {
+            continue; // 다른 맛이므로 완전 신규
+          }
+
+          // STEP 4: 라인업 비교 (여기까지 왔으면 브랜드/대분류/맛은 똑같음)
+          if (scannedLineup !== inventoryLineup) {
+            // 브랜드, 대분류, 맛이 모두 같은데 라인업만 다름 -> VARIATION
+            const existingProductName = inventory.name;
+            return {
+              status: 'VARIATION',
+              variationMessage: `브랜드, 맛, 종류는 같지만 라인업이 다릅니다. (보유: ${existingProductName})`,
+            };
+          }
+
+          // STEP 5: 중량 비교 (라인업까지 똑같으면 중량 확인)
+          if (scannedWeightKg !== undefined && inventoryWeightKg !== null) {
+            const weightDiff = Math.abs(scannedWeightKg - inventoryWeightKg);
+            if (weightDiff > 0.4) {
+              // 400g = 0.4kg 초과 차이면 신규 상품 (용량만 다른 옵션)
+              continue;
+            }
+          }
+
+          // 모든 조건 충족 (브랜드, 대분류, 맛, 라인업, 중량 모두 일치) -> 중복
+          return { status: 'DUPLICATE' };
+        }
+
+        // 보관함에 일치하는 상품이 없음 -> 신규
+        return { status: 'NEW' };
+      };
+
+      // 필터링 함수 (브랜드 필터, 묶음 필터, 중복 체크)
       const filterNewItems = (
         scannedItems: typeof listProducts,
         inventoryItems: Product[]
@@ -1783,79 +2515,32 @@ export default function Home() {
             continue;
           }
 
-          // 3. 정밀 중복 체크 (400g 룰)
-          const scannedWeightG = scanned.weight_g;
-          const scannedBrand = (scanned.brand || '').toLowerCase();
-          const scannedName = scanned.name.toLowerCase();
-          const scannedFlavor = (scanned.flavor || '').toLowerCase();
+          // 3. 4단계 속성 분석 & 400g 룰 적용
+          const analysisResult = analyzeProductStatus(scanned, inventoryItems);
 
-          let isDuplicate = false;
-          let duplicateReason = '';
-
-          for (const inventory of inventoryItems) {
-            const inventoryBrand = (inventory.brand || '').toLowerCase();
-            const inventoryName = (inventory.name || '').toLowerCase();
-            const inventoryFlavor = (inventory.flavor || '').toLowerCase();
-            
-            // 브랜드가 같은지 확인
-            if (scannedBrand && inventoryBrand && scannedBrand !== inventoryBrand) {
-              continue;
-            }
-
-            // 상품명 유사도 체크 (핵심 키워드 겹침)
-            const scannedKeywords = scannedName.split(/\s+/).filter(k => k.length > 2);
-            const inventoryKeywords = inventoryName.split(/\s+/).filter(k => k.length > 2);
-            const commonKeywords = scannedKeywords.filter(k => inventoryKeywords.includes(k));
-            
-            if (commonKeywords.length === 0) {
-              continue;
-            }
-
-            // 맛 정보 비교 (있으면)
-            if (scannedFlavor && inventoryFlavor && scannedFlavor !== inventoryFlavor) {
-              continue;
-            }
-
-            // 중량 비교 (400g 룰)
-            if (scannedWeightG !== undefined) {
-              const inventoryWeightG = parseWeightToGrams(inventory.weight);
-              
-              if (inventoryWeightG !== undefined) {
-                const weightDiff = Math.abs(scannedWeightG - inventoryWeightG);
-                
-                if (weightDiff < 400) {
-                  // 400g 미만 차이면 중복으로 간주
-                  isDuplicate = true;
-                  duplicateReason = `보관함 제품과 용량 ${weightDiff}g 차이로 제외됨`;
-                  break;
-                }
-              }
-            } else {
-              // 중량 정보가 없으면 상품명 유사도만으로 판단
-              if (commonKeywords.length >= 2) {
-                isDuplicate = true;
-                duplicateReason = '보관함 제품과 유사한 상품명';
-                break;
-              }
-            }
-          }
-
-          if (isDuplicate) {
+          if (analysisResult.status === 'DUPLICATE') {
             excludedItems.push({
               brand: scanned.brand,
               name: scanned.name,
               flavor: scanned.flavor,
               weight_g: scanned.weight_g,
-              reason: duplicateReason,
+              reason: '보관함에 이미 존재 (브랜드/맛/용량/라인업 일치)',
               type: 'DUPLICATE',
             });
             continue;
           }
 
-          // 통과한 상품
+          // NEW 또는 VARIATION 상품 추가
           newItems.push({
-            ...scanned,
-            status: 'new',
+            brand: scanned.brand,
+            name: scanned.name,
+            flavor: scanned.flavor,
+            weight_g: scanned.weight_g,
+            weight_kg: scanned.weight_kg,
+            is_snack: scanned.is_snack,
+            bundle_count: scanned.bundle_count,
+            status: analysisResult.status,
+            variationMessage: analysisResult.variationMessage,
           });
         }
 
@@ -1868,6 +2553,15 @@ export default function Home() {
       setBGroupListResults(newItems);
       setBGroupListExcluded(excludedItems);
       
+      // 중복 제거 알림
+      const duplicateCount = excludedItems.filter(item => item.type === 'DUPLICATE').length;
+      if (duplicateCount > 0) {
+        toast(`중복된 상품 ${duplicateCount}개를 자동으로 제외했습니다.`, {
+          icon: 'ℹ️',
+          duration: 3000,
+        });
+      }
+      
       toast.success(`분석 완료! ${newItems.length}개 신규 상품 발견, ${excludedItems.length}개 제외`);
     } catch (error) {
       console.error('Failed to analyze list:', error);
@@ -1877,30 +2571,435 @@ export default function Home() {
     }
   };
 
-  // 리스트 스캔 결과: 엑셀 복사
-  const handleBGroupListCopyToExcel = () => {
-    if (bGroupListResults.length === 0) {
+  // 쿠팡 검색 (지연 로딩)
+  const handleBGroupListSearchCoupang = async (index: number) => {
+    const product = bGroupListResults[index];
+    if (!product || product.isLoadingLink || product.link) return;
+
+    // 로딩 상태 설정
+    setBGroupListResults(prev => prev.map((p, i) => 
+      i === index ? { ...p, isLoadingLink: true } : p
+    ));
+
+    try {
+      // 쿠팡 검색 쿼리 생성 (브랜드 + 상품명 + 맛)
+      const searchQuery = [product.brand, product.name, product.flavor]
+        .filter(Boolean)
+        .join(' ');
+      
+      // 쿠팡 검색 URL 생성 (실제 API가 있다면 여기서 호출)
+      // 현재는 쿠팡 검색 페이지로 리다이렉트
+      const coupangSearchUrl = `https://www.coupang.com/np/search?q=${encodeURIComponent(searchQuery)}`;
+      
+      // 링크 저장
+      setBGroupListResults(prev => prev.map((p, i) => 
+        i === index ? { ...p, link: coupangSearchUrl, isLoadingLink: false } : p
+      ));
+      
+      toast.success('쿠팡 검색 링크가 생성되었습니다.');
+    } catch (error) {
+      console.error('Failed to search Coupang:', error);
+      toast.error('쿠팡 검색 중 오류가 발생했습니다.');
+      
+      // 로딩 상태 해제
+      setBGroupListResults(prev => prev.map((p, i) => 
+        i === index ? { ...p, isLoadingLink: false } : p
+      ));
+    }
+  };
+
+  // 리스트 스캔 결과: 엑셀 복사 (엑셀 컬럼 순서 준수)
+  const handleBGroupListCopyToExcel = async () => {
+    // DUPLICATE 상태는 제외하고 NEW와 VARIATION만 복사
+    const displayResults = bGroupListResults.filter(p => p.status !== 'DUPLICATE');
+    
+    if (displayResults.length === 0) {
       toast.error('복사할 상품이 없습니다.');
       return;
     }
 
-    const rows = bGroupListResults.map((product) => {
+    // weight_kg 또는 weight_g를 amount 포맷으로 변환 (예: 2.27 -> "2.27kg", 400 -> "400g")
+    const formatAmount = (weight_kg?: number, weight_g?: number): string => {
+      if (weight_kg !== undefined) {
+        return `${weight_kg.toFixed(2)}kg`;
+      }
+      if (weight_g !== undefined) {
+        if (weight_g >= 1000) {
+          return `${(weight_g / 1000).toFixed(2)}kg`;
+        }
+        return `${weight_g}g`;
+      }
+      return '';
+    };
+
+    // category 결정: is_snack이면 '간식', 아니면 빈 값
+    const getCategory = (is_snack: boolean): string => {
+      return is_snack ? '간식' : '';
+    };
+
+    const rows = displayResults.map((product) => {
       const fields = [
-        product.name || '',
-        product.brand || '',
-        product.flavor || '',
-        product.weight_g ? `${product.weight_g}g` : '',
-        product.bundle_count > 1 ? `${product.bundle_count}개` : '',
-        '', // 링크 (없음)
-        '', // 영양성분 등 (없음)
+        product.name || '',                    // A열: 제품명
+        '',                                    // B열: 쿠팡 링크 (없음)
+        product.flavor || '',                  // C열: 맛
+        formatAmount(product.weight_kg, product.weight_g),        // D열: 용량
+        '',                                    // E열: source_url (빈 값)
+        getCategory(product.is_snack),        // F열: 대분류 (간식 또는 빈 값)
+        '',                                    // G열: 소분류 (빈 값)
+        '',                                    // H열: 단백질 (빈 값)
+        '',                                    // I열: 총 서빙 횟수 (빈 값)
+        '',                                    // J열: 당류 (빈 값)
+        '',                                    // K열: 지방 (빈 값)
+        '',                                    // L열: 칼로리 (빈 값)
+        '',                                    // M열: 1회량 (빈 값)
+        '',                                    // N열: 탄수화물 (빈 값)
       ];
       return fields.join('\t');
     });
 
     const tabSeparated = rows.join('\n');
-    navigator.clipboard.writeText(tabSeparated).then(() => {
-      toast.success(`복사 완료! ${bGroupListResults.length}개 상품 정보가 클립보드에 복사되었습니다.`);
-    });
+    
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tabSeparated);
+        toast.success(`총 ${displayResults.length}개 상품이 복사되었습니다! 엑셀에 붙여넣기 하세요.`);
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = tabSeparated;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          toast.success(`총 ${displayResults.length}개 상품이 복사되었습니다! 엑셀에 붙여넣기 하세요.`);
+        } catch (err) {
+          toast.error('복사에 실패했습니다.');
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      toast.error('복사에 실패했습니다.');
+    }
+  };
+
+  // B그룹: 쿠팡 텍스트 분석
+  const handleBGroupParseText = async () => {
+    if (!apiKey) {
+      toast.error('Gemini API Key를 먼저 입력해주세요.');
+      return;
+    }
+
+    if (!bGroupParserText.trim()) {
+      toast.error('분석할 텍스트를 입력해주세요.');
+      return;
+    }
+
+    setIsBGroupParsing(true);
+
+    try {
+      const prompt = `Extract valid supplement products from this messy text. Ignore prices, shipping info, advertisements, and other irrelevant information.
+
+Return ONLY a JSON array of products with the following structure:
+[
+  {
+    "brand": "브랜드명",
+    "title": "상품명",
+    "flavor": "맛 (없으면 빈 문자열)",
+    "weight": "용량 (예: 2.27kg, 400g)"
+  },
+  ...
+]
+
+Important:
+- Extract ONLY brand, title, flavor, and weight
+- Ignore all other information (prices, shipping, ads, etc.)
+- Return valid JSON array only
+
+Text to analyze:
+${bGroupParserText}`;
+
+      const res = await fetch('/api/gemini', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiKey,
+          prompt,
+          images: [], // 텍스트만 분석하므로 빈 배열
+          mode: 'detailed',
+        }),
+      });
+
+      if (!res.ok) {
+        // 서버의 실제 에러 메시지 읽기
+        let errorMessage = '텍스트 분석에 실패했습니다.';
+        try {
+          const errorData = await res.json();
+          errorMessage = errorData.error || errorData.message || errorMessage;
+        } catch {
+          try {
+            const errorText = await res.text();
+            if (errorText) errorMessage = errorText;
+          } catch {
+            // 기본 메시지 사용
+          }
+        }
+        toast.error(errorMessage);
+        throw new Error(errorMessage);
+      }
+
+      const data = await res.json();
+      let parsed: Array<{ brand: string; title: string; flavor?: string; weight?: string }> = [];
+
+      if (data.raw) {
+        const jsonParsed = safeParseJSON(data.text);
+        if (jsonParsed && Array.isArray(jsonParsed)) {
+          parsed = jsonParsed;
+        }
+      } else if (Array.isArray(data)) {
+        parsed = data;
+      }
+
+      setExtractedProducts(parsed);
+      setBGroupActiveSubTab('COMPARE');
+      toast.success(`✅ ${parsed.length}개 상품이 추출되었습니다!`);
+    } catch (error) {
+      console.error('Failed to parse text:', error);
+      toast.error('텍스트 분석에 실패했습니다.');
+    } finally {
+      setIsBGroupParsing(false);
+    }
+  };
+
+  // B그룹: 필터 토글 (공백 무시 비교)
+  const handleBGroupFilterToggle = (type: 'BRAND' | 'FLAVOR' | 'WEIGHT', value: string) => {
+    if (activeFilter?.type === type && isMatch(activeFilter.value, value)) {
+      // 같은 필터를 다시 클릭하면 해제
+      setActiveFilter(null);
+    } else {
+      setActiveFilter({ type, value });
+    }
+  };
+
+  // B그룹: 필터 초기화
+  const handleBGroupFilterReset = () => {
+    setActiveFilter(null);
+  };
+
+  // B그룹: 개별 삭제
+  const handleBGroupRemoveProduct = (index: number) => {
+    setExtractedProducts((prev) => prev.filter((_, idx) => idx !== index));
+    toast.success('상품이 삭제되었습니다.');
+  };
+
+  // B그룹: 개별 엑셀 복사
+  const handleBGroupCopyOne = async (product: { brand: string; title: string; flavor?: string; weight?: string }) => {
+    const tabSeparated = `${product.brand || ''}\t${product.title || ''}\t${product.flavor || ''}\t${product.weight || ''}`;
+    
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tabSeparated);
+        toast.success('엑셀 형식으로 복사되었습니다');
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = tabSeparated;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          toast.success('엑셀 형식으로 복사되었습니다');
+        } catch (err) {
+          toast.error('복사에 실패했습니다.');
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      toast.error('복사에 실패했습니다.');
+    }
+  };
+
+  // B그룹: 전체 엑셀 복사
+  const handleBGroupCopyAll = async () => {
+    if (extractedProducts.length === 0) {
+      toast.error('복사할 상품이 없습니다.');
+      return;
+    }
+
+    const rows = extractedProducts.map((product) => 
+      `${product.brand || ''}\t${product.title || ''}\t${product.flavor || ''}\t${product.weight || ''}`
+    );
+    const tabSeparated = rows.join('\n');
+    
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tabSeparated);
+        toast.success(`총 ${extractedProducts.length}개 상품이 엑셀 형식으로 복사되었습니다`);
+      } else {
+        // Fallback for older browsers
+        const textArea = document.createElement('textarea');
+        textArea.value = tabSeparated;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          toast.success(`총 ${extractedProducts.length}개 상품이 엑셀 형식으로 복사되었습니다`);
+        } catch (err) {
+          toast.error('복사에 실패했습니다.');
+        }
+        document.body.removeChild(textArea);
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      toast.error('복사에 실패했습니다.');
+    }
+  };
+
+  // B그룹: 보관함 저장
+  const handleBGroupSaveToInventory = async (product: { brand: string; title: string; flavor?: string; weight?: string }) => {
+    setIsBSaving(true);
+
+    try {
+      const newProduct: Omit<Product, 'id' | 'createdAt'> = {
+        name: product.title,
+        brand: product.brand,
+        flavor: product.flavor || '',
+        weight: product.weight || '',
+        category_large: '',
+        category_small: '',
+        imageUrl: '',
+      };
+
+      const res = await fetch('/api/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newProduct),
+      });
+
+      if (res.ok) {
+        await loadProducts();
+        toast.success('보관함에 등록되었습니다!');
+      } else {
+        throw new Error('Failed to save product');
+      }
+    } catch (error) {
+      console.error('Failed to save to inventory:', error);
+      toast.error('보관함 저장에 실패했습니다.');
+    } finally {
+      setIsBSaving(false);
+    }
+  };
+
+  // B그룹: 최종 완료로 이동
+  const handleMoveToFinal = (product: { brand: string; title: string; flavor?: string; weight?: string }) => {
+    setExtractedProducts((prev) => prev.filter((p) => 
+      !(p.brand === product.brand && 
+        p.title === product.title && 
+        p.flavor === product.flavor && 
+        p.weight === product.weight)
+    ));
+    setFinalProducts((prev) => [...prev, product]);
+    toast.success('최종 완료 리스트로 이동했습니다.');
+  };
+
+  // B그룹: 최종 완료에서 복구
+  const handleRestore = (product: { brand: string; title: string; flavor?: string; weight?: string }) => {
+    setFinalProducts((prev) => prev.filter((p) => 
+      !(p.brand === product.brand && 
+        p.title === product.title && 
+        p.flavor === product.flavor && 
+        p.weight === product.weight)
+    ));
+    setExtractedProducts((prev) => [...prev, product]);
+    toast.success('분석 결과로 복구했습니다.');
+  };
+
+  // B그룹: 최종 완료 개별 삭제
+  const handleFinalRemove = (index: number) => {
+    setFinalProducts((prev) => prev.filter((_, idx) => idx !== index));
+    toast.success('상품이 삭제되었습니다.');
+  };
+
+  // B그룹: 최종 완료 개별 엑셀 복사
+  const handleFinalCopyOne = async (product: { brand: string; title: string; flavor?: string; weight?: string }) => {
+    const tabSeparated = `${product.brand || ''}\t${product.title || ''}\t${product.flavor || ''}\t${product.weight || ''}`;
+    
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tabSeparated);
+        toast.success('엑셀 형식으로 복사되었습니다');
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = tabSeparated;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        toast.success('엑셀 형식으로 복사되었습니다');
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      toast.error('복사에 실패했습니다.');
+    }
+  };
+
+  // B그룹: 최종 완료 전체 엑셀 복사
+  const handleFinalCopyAll = async () => {
+    if (finalProducts.length === 0) {
+      toast.error('복사할 상품이 없습니다.');
+      return;
+    }
+
+    const rows = finalProducts.map(product => 
+      `${product.brand || ''}\t${product.title || ''}\t${product.flavor || ''}\t${product.weight || ''}`
+    );
+    const tsvString = rows.join('\n');
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tsvString);
+        toast.success(`총 ${finalProducts.length}개 상품이 엑셀 형식으로 복사되었습니다!`);
+      } else {
+        const textArea = document.createElement('textarea');
+        textArea.value = tsvString;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        toast.success(`총 ${finalProducts.length}개 상품이 엑셀 형식으로 복사되었습니다!`);
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      toast.error('복사에 실패했습니다.');
+    }
+  };
+
+  // 드래그 앤 드롭 핸들러
+  const handleDragStart = (product: { brand: string; title: string; flavor?: string; weight?: string }) => {
+    setDraggedProduct(product);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (draggedProduct) {
+      handleMoveToFinal(draggedProduct);
+      setDraggedProduct(null);
+    }
   };
 
   // 리스트 스캔 결과: 보관함에 저장
@@ -1908,11 +3007,25 @@ export default function Home() {
     setIsBSaving(true);
 
     try {
+      // weight_kg 또는 weight_g를 문자열로 변환
+      const formatWeight = (weight_kg?: number, weight_g?: number): string => {
+        if (weight_kg !== undefined) {
+          return `${weight_kg.toFixed(2)}kg`;
+        }
+        if (weight_g !== undefined) {
+          if (weight_g >= 1000) {
+            return `${(weight_g / 1000).toFixed(2)}kg`;
+          }
+          return `${weight_g}g`;
+        }
+        return '';
+      };
+
       const newProduct: Omit<Product, 'id' | 'createdAt'> = {
         name: product.name,
         brand: product.brand,
-        flavor: '',
-        weight: '',
+        flavor: product.flavor || '',
+        weight: formatWeight(product.weight_kg, product.weight_g),
         category_large: product.is_snack ? '간식' : '',
         category_small: '',
         imageUrl: '',
@@ -2199,9 +3312,50 @@ export default function Home() {
             <div className="font-semibold text-sm text-[#ccff00] line-clamp-2">{product.name}</div>
             {product.flavor && <div className="text-xs text-gray-300">{product.flavor}</div>}
             {product.weight && <div className="text-xs text-gray-400">{product.weight}</div>}
-            {product.protein !== undefined && (
-              <div className="text-xs text-gray-400">단백질: {product.protein}g</div>
-            )}
+            
+            {/* 영양성분 요약 라인 */}
+            {(() => {
+              const nutritionItems: React.ReactNode[] = [];
+              
+              if (product.calories !== undefined && product.calories > 0) {
+                nutritionItems.push(<span key="cal" className="text-zinc-400">🔥 {product.calories} kcal</span>);
+              }
+              
+              if (product.protein !== undefined) {
+                nutritionItems.push(
+                  <span key="protein" className={product.protein > 0 ? 'text-yellow-400 font-bold' : 'text-zinc-400'}>
+                    P {product.protein}g
+                  </span>
+                );
+              }
+              
+              if (product.carbs !== undefined && product.carbs > 0) {
+                nutritionItems.push(<span key="carbs" className="text-zinc-400">C {product.carbs}g</span>);
+              }
+              
+              if (product.sugar !== undefined && product.sugar > 0) {
+                nutritionItems.push(<span key="sugar" className="text-zinc-400">S {product.sugar}g</span>);
+              }
+              
+              if (product.fat !== undefined && product.fat > 0) {
+                nutritionItems.push(<span key="fat" className="text-zinc-400">F {product.fat}g</span>);
+              }
+              
+              if (nutritionItems.length === 0) return null;
+              
+              return (
+                <div className="flex flex-wrap items-center gap-2 mt-2 text-xs">
+                  {nutritionItems.map((item, index) => (
+                    <React.Fragment key={index}>
+                      {item}
+                      {index < nutritionItems.length - 1 && (
+                        <span className="text-zinc-600">|</span>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         </div>
         <RippleButton
@@ -2232,6 +3386,28 @@ export default function Home() {
     });
 
     return { ...counts, total: totalCount };
+  }, [products]);
+
+  // 브랜드 목록 추출 (useMemo)
+  const brandList = useMemo(() => {
+    const brands = new Set<string>();
+    products.forEach((product) => {
+      if (product.brand && product.brand.trim() && product.brand.trim() !== 'N/A') {
+        brands.add(product.brand.trim());
+      }
+    });
+    return Array.from(brands).sort((a, b) => a.localeCompare(b, 'ko'));
+  }, [products]);
+
+  // 맛 목록 추출 (useMemo)
+  const flavorList = useMemo(() => {
+    const flavors = new Set<string>();
+    products.forEach((product) => {
+      if (product.flavor && product.flavor.trim() && product.flavor.trim() !== 'N/A') {
+        flavors.add(product.flavor.trim());
+      }
+    });
+    return Array.from(flavors).sort((a, b) => a.localeCompare(b, 'ko'));
   }, [products]);
 
   const containerVariants = {
@@ -2517,6 +3693,63 @@ export default function Home() {
                 </div>
               </motion.div>
 
+              {/* 브랜드 & 맛 필터 */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-xl"
+              >
+                <div className="flex items-center gap-4">
+                  {/* 브랜드 선택 */}
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-400 mb-2">브랜드</label>
+                    <select
+                      value={selectedBrand}
+                      onChange={(e) => setSelectedBrand(e.target.value)}
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                    >
+                      <option value="All">전체 브랜드</option>
+                      {brandList.map((brand) => (
+                        <option key={brand} value={brand}>
+                          {brand}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* 맛 선택 */}
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-400 mb-2">맛</label>
+                    <select
+                      value={selectedFlavor}
+                      onChange={(e) => setSelectedFlavor(e.target.value)}
+                      className="w-full px-4 py-2 bg-zinc-800 border border-zinc-700 rounded-md text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                    >
+                      <option value="All">전체 맛</option>
+                      {flavorList.map((flavor) => (
+                        <option key={flavor} value={flavor}>
+                          {flavor}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* 초기화 버튼 */}
+                  <div className="flex items-end">
+                    <RippleButton
+                      onClick={() => {
+                        setSelectedBrand('All');
+                        setSelectedFlavor('All');
+                      }}
+                      className="px-4 py-2 bg-zinc-700 hover:bg-zinc-600 border border-zinc-600 rounded-md text-white text-sm transition-all flex items-center gap-2"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                      초기화
+                    </RippleButton>
+                  </div>
+                </div>
+              </motion.div>
+
               {/* 필터링된 상품 리스트 */}
               {(() => {
                 const filteredProducts = products.filter((product) => {
@@ -2533,6 +3766,22 @@ export default function Home() {
                   if (selectedSubCategory && selectedSubCategory !== '전체') {
                     const productSubCategory = (product.category_small || '').trim();
                     if (productSubCategory !== selectedSubCategory.trim()) {
+                      return false;
+                    }
+                  }
+
+                  // 브랜드 필터
+                  if (selectedBrand !== 'All') {
+                    const productBrand = (product.brand || '').trim();
+                    if (productBrand !== selectedBrand) {
+                      return false;
+                    }
+                  }
+
+                  // 맛 필터
+                  if (selectedFlavor !== 'All') {
+                    const productFlavor = (product.flavor || '').trim();
+                    if (productFlavor !== selectedFlavor) {
                       return false;
                     }
                   }
@@ -2658,7 +3907,7 @@ export default function Home() {
             </motion.div>
           )}
 
-          {/* Tab B: 시장조사 */}
+          {/* Tab B: 시장조사 - 전면 리뉴얼 */}
           {activeTab === 'B' && (
             <motion.div
               key="B"
@@ -2668,263 +3917,378 @@ export default function Home() {
               exit="exit"
               className="space-y-6"
             >
-              {/* 리스트 스캔 모드 */}
-                  {/* 설정 UI */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                    className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl space-y-4"
+              {/* 서브 탭 전환 */}
+              <div className="flex gap-2 border-b border-white/10">
+                <button
+                  onClick={() => setBGroupActiveSubTab('PARSER')}
+                  className={`px-4 py-2 font-semibold transition-all ${
+                    bGroupActiveSubTab === 'PARSER'
+                      ? 'text-[#ccff00] border-b-2 border-[#ccff00]'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  쿠팡 분석
+                </button>
+                <button
+                  onClick={() => setBGroupActiveSubTab('COMPARE')}
+                  className={`px-4 py-2 font-semibold transition-all ${
+                    bGroupActiveSubTab === 'COMPARE'
+                      ? 'text-[#ccff00] border-b-2 border-[#ccff00]'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  상품 비교
+                </button>
+              </div>
+
+              {/* Tab 1: 쿠팡 분석 (Text Parser) */}
+              {bGroupActiveSubTab === 'PARSER' && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl space-y-4"
+                >
+                  <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2">
+                    <FileText className="w-5 h-5" />
+                    쿠팡 텍스트 분석
+                  </h3>
+                  <p className="text-sm text-gray-400">
+                    쿠팡 웹페이지에서 상품 정보를 드래그해서 복사한 텍스트를 붙여넣으세요.
+                  </p>
+                  <textarea
+                    value={bGroupParserText}
+                    onChange={(e) => setBGroupParserText(e.target.value)}
+                    placeholder="여기에 쿠팡에서 복사한 텍스트를 붙여넣으세요..."
+                    className="w-full h-64 px-4 py-3 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition resize-none"
+                  />
+                  <RippleButton
+                    onClick={handleBGroupParseText}
+                    disabled={!bGroupParserText.trim() || isBGroupParsing}
+                    className="w-full px-6 py-4 bg-[#ccff00] text-black font-bold text-lg rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_30px_rgba(204,255,0,0.7)] hover:shadow-[0_0_40px_rgba(204,255,0,0.9)] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2">
-                      <FileText className="w-5 h-5" />
-                      리스트 스캔 설정
-                    </h3>
+                    {isBGroupParsing ? (
+                      <>
+                        <Loader2 className="w-6 h-6 animate-spin" />
+                        분석 중...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-6 h-6" />
+                        분석 시작
+                      </>
+                    )}
+                  </RippleButton>
+                </motion.div>
+              )}
 
-                    {/* 브랜드 필터 */}
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-300">브랜드 필터</label>
-                      <input
-                        type="text"
-                        value={bGroupBrandFilter}
-                        onChange={(e) => setBGroupBrandFilter(e.target.value)}
-                        placeholder="머슬팜, 마이프로틴 (비어있으면 전체 허용)"
-                        className="w-full px-4 py-3 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
+              {/* Tab 2: 상품 비교 (Split View + Final Dock) */}
+              {bGroupActiveSubTab === 'COMPARE' && (
+                <div className="flex flex-col h-full gap-4">
+                  {/* 상단 영역: 좌우 5:5 스플릿 (70%) */}
+                  <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6 overflow-hidden">
+                  {/* Left Panel: 내 보관함 */}
+                  <motion.div
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl"
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2">
+                        <Package className="w-5 h-5" />
+                        내 보관함
+                      </h3>
+                      {activeFilter && (
+                        <RippleButton
+                          onClick={handleBGroupFilterReset}
+                          className="px-3 py-1.5 bg-transparent border border-white/20 text-gray-400 hover:text-white hover:border-white/40 rounded-lg transition-all text-xs flex items-center gap-2"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          필터 초기화
+                        </RippleButton>
+                      )}
                     </div>
 
-                    {/* 묶음 제외 기준 */}
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-300">묶음 제외 기준</label>
-                      <input
-                        type="number"
-                        value={bGroupBundleExclude}
-                        onChange={(e) => setBGroupBundleExclude(Number(e.target.value) || 2)}
-                        min="1"
-                        className="w-full px-4 py-3 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
-                      />
-                      <p className="text-xs text-gray-400">N개 이상 묶음 상품 제외 (간식은 묶음 허용)</p>
-                    </div>
+                    {/* 필터링된 보관함 리스트 */}
+                    <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                      {(() => {
+                        let filtered = products;
 
-                    {/* 이미지 입력 (Ctrl+V 전용) */}
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-gray-300">리스트 스크린샷</label>
-                      <div
-                        onPaste={handleBGroupListPaste}
-                        className="border-2 border-dashed border-white/20 rounded-lg p-8 text-center hover:border-[#ccff00]/50 transition-all bg-black/20"
-                      >
-                        <FileText className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                        <p className="text-gray-400 text-sm">여기를 클릭하고 스크린샷을 계속 붙여넣으세요</p>
-                        <p className="text-[#ccff00] text-xs font-semibold mt-1">Ctrl+V (최대 5장)</p>
-                        {bGroupListImages.length > 0 && (
-                          <p className="text-xs text-gray-500 mt-2">현재 {bGroupListImages.length}장 대기 중</p>
-                        )}
-                      </div>
+                        if (activeFilter) {
+                          if (activeFilter.type === 'BRAND') {
+                            filtered = filtered.filter(p => 
+                              isMatch(p.brand || '', activeFilter.value)
+                            );
+                          } else if (activeFilter.type === 'FLAVOR') {
+                            filtered = filtered.filter(p => 
+                              isMatch(p.flavor || '', activeFilter.value)
+                            );
+                          } else if (activeFilter.type === 'WEIGHT') {
+                            filtered = filtered.filter(p => 
+                              isMatch(p.weight || '', activeFilter.value)
+                            );
+                          }
+                        }
 
-                      {/* 대기열 미리보기 */}
-                      {bGroupListImages.length > 0 && (
-                        <div className="space-y-2">
-                          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                            {bGroupListImages.map((img, idx) => (
-                              <div key={idx} className="relative w-full h-24 bg-black/20 rounded-lg overflow-hidden group">
-                                <img
-                                  src={img}
-                                  alt={`Screenshot ${idx + 1}`}
-                                  className="w-full h-full object-contain"
-                                />
-                                <button
-                                  onClick={() => handleBGroupListImageRemove(idx)}
-                                  className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                                >
-                                  <X className="w-3 h-3 text-white" />
-                                </button>
-                                <div className="absolute bottom-1 left-1 px-1.5 py-0.5 bg-black/70 rounded text-xs text-white">
-                                  {idx + 1}
+                        if (filtered.length === 0) {
+                          return (
+                            <div className="text-center py-8 text-gray-400 text-sm">
+                              {activeFilter ? '필터 조건에 맞는 상품이 없습니다.' : '보관함이 비어있습니다.'}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="space-y-1">
+                            {filtered.map((product) => (
+                              <div
+                                key={product.id}
+                                className="px-3 py-2 bg-black/30 rounded-lg border border-white/5 hover:border-white/20 transition-all"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-xs text-gray-400 mb-0.5">
+                                      [{product.brand || '브랜드 없음'}]
+                                    </div>
+                                    <div className="text-sm font-semibold text-[#ccff00] truncate">
+                                      {product.name}
+                                    </div>
+                                    <div className="flex gap-2 mt-1 text-xs text-gray-300">
+                                      {product.flavor && <span>| {product.flavor}</span>}
+                                      {product.weight && <span>| {product.weight}</span>}
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
                             ))}
                           </div>
-                  <RippleButton
-                            onClick={handleBGroupListImagesClear}
-                            className="w-full px-4 py-2 bg-transparent border border-white/20 text-gray-400 hover:text-white hover:border-white/40 rounded-lg transition-all text-sm flex items-center justify-center gap-2"
+                        );
+                      })()}
+                    </div>
+                  </motion.div>
+
+                  {/* Right Panel: 분석 결과 */}
+                  <motion.div
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl"
                   >
-                            <X className="w-4 h-4" />
-                            모두 지우기
-                  </RippleButton>
-                        </div>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2">
+                        <Search className="w-5 h-5" />
+                        분석 결과 ({extractedProducts.length}개)
+                      </h3>
+                      {extractedProducts.length > 0 && (
+                        <RippleButton
+                          onClick={handleBGroupCopyAll}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-all text-xs flex items-center gap-2"
+                        >
+                          <Copy className="w-4 h-4" />
+                          전체 복사
+                        </RippleButton>
                       )}
                     </div>
 
-                    {/* 일괄 분석 버튼 */}
-                    <RippleButton
-                      onClick={handleBGroupListAnalyze}
-                      disabled={bGroupListImages.length === 0 || isBGroupListAnalyzing}
-                      className="w-full px-6 py-4 bg-[#ccff00] text-black font-bold text-lg rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_30px_rgba(204,255,0,0.7)] hover:shadow-[0_0_40px_rgba(204,255,0,0.9)] flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isBGroupListAnalyzing ? (
-                        <>
-                          <Loader2 className="w-6 h-6 animate-spin" />
-                          분석 중...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="w-6 h-6" />
-                          {bGroupListImages.length}장의 스크린샷 일괄 분석
-                        </>
-                      )}
-                    </RippleButton>
-              </motion.div>
-
-                  {/* 결과 화면 */}
-                  {bGroupListResults.length > 0 && (
-              <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl"
-                    >
-                      <div className="flex items-center justify-between mb-4">
-                        <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2">
-                          <Package className="w-5 h-5" />
-                          신규 발견된 상품 (New) ({bGroupListResults.length}개)
-                        </h3>
-                        {bGroupListResults.length > 0 && (
-                          <RippleButton
-                            onClick={handleBGroupListCopyToExcel}
-                            className="px-4 py-2 bg-transparent border-2 border-[#ccff00] text-[#ccff00] font-semibold rounded-lg hover:bg-[#ccff00]/10 transition-all flex items-center gap-2 text-sm"
-                          >
-                            <Copy className="w-4 h-4" />
-                            엑셀로 모두 복사
-                          </RippleButton>
-                        )}
+                    {extractedProducts.length === 0 ? (
+                      <div className="text-center py-12 space-y-4">
+                        <p className="text-gray-400 text-sm">
+                          먼저 텍스트 분석을 진행해주세요.
+                        </p>
+                        <RippleButton
+                          onClick={() => setBGroupActiveSubTab('PARSER')}
+                          className="px-4 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all flex items-center justify-center gap-2"
+                        >
+                          <FileText className="w-4 h-4" />
+                          텍스트 분석으로 이동
+                        </RippleButton>
                       </div>
+                    ) : (
+                      <div className="space-y-3 overflow-y-auto">
+                        {sortedProducts.map((product, idx) => {
+                          // sortedProducts의 인덱스를 extractedProducts의 실제 인덱스로 변환
+                          const actualIndex = extractedProducts.findIndex(p => 
+                            p.brand === product.brand &&
+                            p.title === product.title &&
+                            p.flavor === product.flavor &&
+                            p.weight === product.weight
+                          );
+                          
+                          return (
+                            <div
+                              key={idx}
+                              draggable={true}
+                              onDragStart={() => handleDragStart(product)}
+                              className="relative bg-black/30 rounded-lg p-4 border border-white/10 hover:border-[#ccff00]/50 transition-all cursor-move"
+                            >
+                              {/* 삭제 버튼 (우측 상단) */}
+                              <button
+                                onClick={() => handleBGroupRemoveProduct(actualIndex >= 0 ? actualIndex : idx)}
+                                className="absolute top-2 right-2 p-1.5 text-red-500 hover:text-red-400 hover:bg-red-500/20 rounded transition-all z-10"
+                                title="삭제"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {bGroupListResults.map((product, idx) => (
-                          <div
-                    key={idx}
-                            className="bg-black/30 backdrop-blur-xl border border-white/10 rounded-lg p-4 space-y-2"
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1">
-                                <p className="text-xs text-gray-400 mb-1">{product.brand || '브랜드 없음'}</p>
-                                <p className="text-sm font-semibold text-[#ccff00] line-clamp-2">{product.name}</p>
-                                {product.flavor && (
-                                  <p className="text-xs text-gray-300 mt-1">맛: {product.flavor}</p>
-                                )}
-                                {product.weight_g && (
-                                  <p className="text-xs text-gray-300">용량: {product.weight_g >= 1000 ? `${(product.weight_g / 1000).toFixed(2)}kg` : `${product.weight_g}g`}</p>
-                                )}
-                                <div className="flex gap-2 mt-2">
-                                  {product.is_snack && (
-                                    <span className="px-2 py-0.5 bg-[#ccff00]/20 text-[#ccff00] text-xs rounded-full">
-                                      간식
-                                    </span>
+                              <div className="space-y-3 pr-8">
+                                <div className="text-sm font-semibold text-[#ccff00] line-clamp-2">
+                                  {product.title}
+                                </div>
+
+                                {/* 클릭 가능한 뱃지들 */}
+                                <div className="flex flex-wrap gap-2">
+                                  <button
+                                    onClick={() => handleBGroupFilterToggle('BRAND', product.brand)}
+                                    className={`px-2 py-1 rounded text-xs font-medium transition-all border ${
+                                      activeFilter?.type === 'BRAND' && isMatch(activeFilter.value, product.brand)
+                                        ? 'border-yellow-400 bg-yellow-400/20 text-yellow-400'
+                                        : 'border-white/10 bg-white/10 text-gray-300 hover:bg-white/20 hover:border-white/20'
+                                    }`}
+                                  >
+                                    {product.brand || '브랜드 없음'}
+                                  </button>
+                                  {product.flavor && (
+                                    <button
+                                      onClick={() => handleBGroupFilterToggle('FLAVOR', product.flavor!)}
+                                      className={`px-2 py-1 rounded text-xs font-medium transition-all border ${
+                                        activeFilter?.type === 'FLAVOR' && isMatch(activeFilter.value, product.flavor!)
+                                          ? 'border-yellow-400 bg-yellow-400/20 text-yellow-400'
+                                          : 'border-white/10 bg-white/10 text-gray-300 hover:bg-white/20 hover:border-white/20'
+                                      }`}
+                                    >
+                                      {product.flavor}
+                                    </button>
                                   )}
-                                  {product.bundle_count > 1 && (
-                                    <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-xs rounded-full">
-                                      {product.bundle_count}개 묶음
-                                    </span>
+                                  {product.weight && (
+                                    <button
+                                      onClick={() => handleBGroupFilterToggle('WEIGHT', product.weight!)}
+                                      className={`px-2 py-1 rounded text-xs font-medium transition-all border ${
+                                        activeFilter?.type === 'WEIGHT' && isMatch(activeFilter.value, product.weight!)
+                                          ? 'border-yellow-400 bg-yellow-400/20 text-yellow-400'
+                                          : 'border-white/10 bg-white/10 text-gray-300 hover:bg-white/20 hover:border-white/20'
+                                      }`}
+                                    >
+                                      {product.weight}
+                                    </button>
                                   )}
-        </div>
+                                </div>
+
+                                {/* 버튼 그룹 */}
+                                <div className="flex gap-2">
+                                  <RippleButton
+                                    onClick={() => handleBGroupCopyOne(product)}
+                                    className="flex-1 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-all text-sm flex items-center justify-center gap-2"
+                                  >
+                                    <Copy className="w-4 h-4" />
+                                    복사
+                                  </RippleButton>
+                                  <RippleButton
+                                    onClick={() => handleMoveToFinal(product)}
+                                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-all text-sm flex items-center justify-center gap-2"
+                                    title="최종 완료로 이동"
+                                  >
+                                    <ArrowDown className="w-4 h-4" />
+                                  </RippleButton>
+                                </div>
                               </div>
                             </div>
-                            <RippleButton
-                              onClick={() => handleBGroupListSaveToA(product)}
-                              disabled={isBSaving}
-                              className="w-full px-4 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-                            >
-                              <Save className="w-4 h-4" />
-                              보관함 저장
-                            </RippleButton>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
-              </motion.div>
-                  )}
+                    )}
+                  </motion.div>
+                  </div>
 
-                  {/* 제외된 상품 (Duplicates) */}
-                  {bGroupListExcluded.length > 0 && (
-                <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-6 shadow-xl"
-                    >
-                      <details className="space-y-2" open>
-                        <summary className="text-sm font-semibold text-[#ccff00] cursor-pointer flex items-center gap-2 mb-4">
-                          <FileText className="w-4 h-4" />
-                          제외된 상품 (Duplicates) ({bGroupListExcluded.length}개)
-                        </summary>
+                  {/* 하단 영역: 최종 완료 도크 (30% 또는 고정 높이) */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-zinc-900/80 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-xl h-[300px] flex flex-col"
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="text-lg font-semibold text-[#ccff00] flex items-center gap-2">
+                        <Package className="w-5 h-5" />
+                        최종 완료 ({finalProducts.length}개)
+                      </h3>
+                      {finalProducts.length > 0 && (
+                        <RippleButton
+                          onClick={handleFinalCopyAll}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-lg transition-all text-xs flex items-center gap-2"
+                        >
+                          <Copy className="w-4 h-4" />
+                          전체 복사
+                        </RippleButton>
+                      )}
+                    </div>
 
-                        {/* 필터 칩 */}
-                        <div className="mb-4 overflow-x-auto">
-                          <div className="flex gap-2 pb-2">
-                            {(['ALL', 'BRAND', 'BUNDLE', 'DUPLICATE'] as const).map((filterType) => {
-                              const count = filterType === 'ALL' 
-                                ? bGroupListExcluded.length
-                                : bGroupListExcluded.filter(item => item.type === filterType).length;
-                              
-                              const labels = {
-                                ALL: '전체',
-                                BRAND: '⛔ 브랜드 제외',
-                                BUNDLE: '📦 묶음/수량',
-                                DUPLICATE: '♻️ 보관함 중복',
-                              };
+                    {finalProducts.length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center text-center">
+                        <p className="text-gray-400 text-sm">
+                          여기로 상품을 드래그하거나 [⬇️ 최종 선택] 버튼을 누르세요
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex-1 overflow-x-auto overflow-y-hidden">
+                        <div className="flex gap-3 pb-2 min-w-max">
+                          {finalProducts.map((product, idx) => (
+                            <div
+                              key={idx}
+                              className="relative bg-black/40 rounded-lg p-3 border border-white/10 hover:border-[#ccff00]/50 transition-all min-w-[280px] flex-shrink-0"
+                            >
+                              {/* 삭제 버튼 (우측 상단) */}
+                              <button
+                                onClick={() => handleFinalRemove(idx)}
+                                className="absolute top-2 right-2 p-1 text-red-500 hover:text-red-400 hover:bg-red-500/20 rounded transition-all z-10"
+                                title="삭제"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
 
-                              const isSelected = bGroupExcludedFilter === filterType;
-
-                              return (
-                                <button
-                                  key={filterType}
-                                  onClick={() => setBGroupExcludedFilter(filterType)}
-                                  className={`px-4 py-2 rounded-lg font-semibold text-sm whitespace-nowrap transition-all ${
-                                    isSelected
-                                      ? 'bg-[#ccff00] text-black shadow-[0_0_10px_rgba(204,255,0,0.5)]'
-                                      : 'bg-transparent border border-white/20 text-white hover:border-white/40'
-                                  }`}
-                                >
-                                  {labels[filterType]} ({count})
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {/* 필터링된 리스트 */}
-                        <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
-                          {bGroupListExcluded
-                            .filter(item => 
-                              bGroupExcludedFilter === 'ALL' || item.type === bGroupExcludedFilter
-                            )
-                            .map((item, idx) => {
-                              const typeLabels = {
-                                BRAND: '브랜드',
-                                BUNDLE: '묶음',
-                                DUPLICATE: '중복',
-                              };
-
-                              const typeColors = {
-                                BRAND: 'bg-red-500/20 text-red-400 border-red-500/50',
-                                BUNDLE: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/50',
-                                DUPLICATE: 'bg-blue-500/20 text-blue-400 border-blue-500/50',
-                              };
-
-                              return (
-                                <div key={idx} className="text-xs text-gray-400 py-2 border-b border-white/5 flex items-start gap-2">
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${typeColors[item.type]}`}>
-                                    [{typeLabels[item.type]}]
-                                  </span>
-                                  <div className="flex-1">
-                                    <p className="font-semibold text-gray-300">{item.name}</p>
-                                    <p className="text-gray-500 mt-1">
-                                      {item.brand && `${item.brand} | `}
-                                      {item.reason}
-                                    </p>
-                                  </div>
+                              <div className="space-y-2 pr-6">
+                                <div className="text-sm font-semibold text-[#ccff00] line-clamp-2">
+                                  {product.title}
                                 </div>
-                              );
-                            })}
+
+                                <div className="flex flex-wrap gap-1.5 text-xs">
+                                  <span className="px-1.5 py-0.5 bg-white/10 rounded text-gray-300">
+                                    {product.brand || '브랜드 없음'}
+                                  </span>
+                                  {product.flavor && (
+                                    <span className="px-1.5 py-0.5 bg-white/10 rounded text-gray-300">
+                                      {product.flavor}
+                                    </span>
+                                  )}
+                                  {product.weight && (
+                                    <span className="px-1.5 py-0.5 bg-white/10 rounded text-gray-300">
+                                      {product.weight}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex gap-2">
+                                  <RippleButton
+                                    onClick={() => handleFinalCopyOne(product)}
+                                    className="flex-1 px-2 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded text-xs flex items-center justify-center gap-1"
+                                  >
+                                    <Copy className="w-3 h-3" />
+                                    복사
+                                  </RippleButton>
+                                  <RippleButton
+                                    onClick={() => handleRestore(product)}
+                                    className="flex-1 px-2 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded text-xs flex items-center justify-center gap-1"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                    복구
+                                  </RippleButton>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      </details>
-                </motion.div>
+                      </div>
+                    )}
+                  </motion.div>
+                </div>
               )}
             </motion.div>
           )}
@@ -2954,7 +4318,7 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* 1단계: 입력 (2개 구역) */}
+              {/* 1단계: 입력 (3개 구역) */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -2965,16 +4329,29 @@ export default function Home() {
                   상품 이미지 & 성분표 업로드
                 </h3>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   {/* 구역 A: 상품 이미지 (왼쪽) */}
                   <div
-                    onClick={() => !isProductImageLoading && setCGroupFocusedArea('product')}
-                    onPaste={isProductImageLoading ? undefined : handleCGroupProductPaste}
-                    className={`space-y-3 p-4 rounded-lg border-2 transition-all ${
+                    onClick={(e) => {
+                      // input, button, label 등 인터랙티브 요소 클릭은 무시
+                      const target = e.target as HTMLElement;
+                      if (target.closest('input, button, label, [role="button"]')) {
+                        return;
+                      }
+                      if (!productLoading) {
+                        setCGroupFocusedArea('product');
+                      }
+                    }}
+                    onPaste={productLoading ? undefined : handleCGroupProductPaste}
+                    className={`space-y-3 p-4 rounded-lg border-2 transition-all relative ${
                       cGroupFocusedArea === 'product'
                         ? 'border-[#ccff00] bg-[#ccff00]/10'
                         : 'border-white/20 bg-black/20'
-                    } ${isProductImageLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                    } ${productLoading ? 'opacity-50' : ''}`}
+                    style={{ 
+                      position: 'relative',
+                      zIndex: 10
+                    }}
                   >
                     <h4 className="text-sm font-semibold text-[#ccff00] flex items-center gap-2">
                       <Package className="w-4 h-4" />
@@ -2982,26 +4359,44 @@ export default function Home() {
                     </h4>
 
                     {/* 상품 이미지 URL 입력 */}
-                    <div className="space-y-2">
+                    <div className="space-y-2" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 100 }}>
                       <label className="block text-xs text-gray-400">상품 이미지 URL 입력</label>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2" style={{ pointerEvents: 'auto' }}>
                 <input
                           type="url"
                           value={cGroupImageUrlInput}
-                          onChange={(e) => setCGroupImageUrlInput(e.target.value)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setCGroupImageUrlInput(e.target.value);
+                          }}
                           onKeyDown={(e) => {
+                            e.stopPropagation();
                             if (e.key === 'Enter') {
                               handleCGroupImageUrlAdd();
                             }
                           }}
-                          onFocus={() => setCGroupFocusedArea('product')}
+                          onClick={(e) => e.stopPropagation()}
+                          onFocus={(e) => {
+                            e.stopPropagation();
+                            setCGroupFocusedArea('product');
+                          }}
                           placeholder="https://..."
-                          className="flex-1 px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                          disabled={productLoading}
+                          className="flex-1 px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition disabled:opacity-50 cursor-text"
+                          style={{ pointerEvents: 'auto', position: 'relative', zIndex: 100 }}
                         />
                         <RippleButton
-                          onClick={handleCGroupImageUrlAdd}
-                          disabled={!cGroupImageUrlInput.trim()}
-                          className="px-3 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all text-xs flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                          type="button"
+                          onClick={(e) => {
+                            e?.preventDefault();
+                            e?.stopPropagation();
+                            if (!productLoading && cGroupImageUrlInput.trim()) {
+                              handleCGroupImageUrlAdd();
+                            }
+                          }}
+                          disabled={!cGroupImageUrlInput.trim() || productLoading}
+                          className="px-3 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all text-xs flex items-center gap-1 disabled:opacity-50"
+                          style={{ pointerEvents: 'auto', position: 'relative', zIndex: 100 }}
                         >
                           <ArrowRight className="w-3 h-3" />
                           추가
@@ -3010,21 +4405,27 @@ export default function Home() {
                     </div>
 
                     {/* 상품 이미지 붙여넣기 영역 */}
-                    <div className="space-y-2">
+                    <div className="space-y-2" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 100 }}>
                       <input
                         ref={cGroupProductFileInputRef}
                   type="file"
                   multiple
                   accept="image/*"
                         onChange={handleCGroupProductFileSelect}
-                          disabled={isProductImageLoading}
+                          disabled={productLoading}
                   className="hidden"
                         id="c-group-product-input"
                 />
                 <label
                         htmlFor="c-group-product-input"
-                        className={`block ${isProductImageLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                        onClick={() => !isProductImageLoading && setCGroupFocusedArea('product')}
+                        className={`block ${productLoading ? 'opacity-50' : 'cursor-pointer'}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!productLoading) {
+                            setCGroupFocusedArea('product');
+                          }
+                        }}
+                        style={{ pointerEvents: productLoading ? 'none' : 'auto' }}
                       >
                         <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-[#ccff00]/50 transition-all bg-black/20">
                           <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
@@ -3035,7 +4436,7 @@ export default function Home() {
 
                       {/* 상품 이미지 썸네일 */}
                       {cGroupProductImages.length > 0 && (
-                        <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div className="grid grid-cols-2 gap-2 mt-2 relative z-10">
                           {cGroupProductImages.map((img, idx) => (
                             <div key={idx} className="relative w-full h-20 bg-black/20 rounded-lg overflow-hidden group">
                               <img
@@ -3045,9 +4446,10 @@ export default function Home() {
                                   cGroupRemovingBg.has(idx) ? 'opacity-50' : 'opacity-100'
                                 }`}
                               />
+                              {/* 로딩 스피너는 조건부 렌더링으로만 표시 (DOM에서 완전히 제거) */}
                               {cGroupRemovingBg.has(idx) && (
-                                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center z-10">
-                <motion.div
+                                <div className="absolute inset-0 bg-black/70 backdrop-blur-sm flex flex-col items-center justify-center z-20 pointer-events-none">
+                                  <motion.div
                                     animate={{ rotate: 360 }}
                                     transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
                                   >
@@ -3057,8 +4459,16 @@ export default function Home() {
                                 </div>
                               )}
                               <button
-                                onClick={() => removeProductImage(idx)}
-                                className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                                type="button"
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (!cGroupRemovingBg.has(idx)) {
+                                    removeProductImage(idx);
+                                  }
+                                }}
+                                disabled={cGroupRemovingBg.has(idx)}
+                                className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity z-30 disabled:opacity-0"
                               >
                                 <X className="w-3 h-3 text-white" />
                               </button>
@@ -3071,13 +4481,23 @@ export default function Home() {
 
                   {/* 구역 B: 성분표/영양정보 (오른쪽) */}
                   <div
-                    onClick={() => !isNutritionImageLoading && setCGroupFocusedArea('nutrition')}
-                    onPaste={isNutritionImageLoading ? undefined : handleCGroupNutritionPaste}
-                    className={`space-y-3 p-4 rounded-lg border-2 transition-all ${
+                    onClick={(e) => {
+                      // input, button, label 등 인터랙티브 요소 클릭은 무시
+                      const target = e.target as HTMLElement;
+                      if (target.closest('input, button, label, [role="button"]')) {
+                        return;
+                      }
+                      if (!nutritionLoading) {
+                        setCGroupFocusedArea('nutrition');
+                      }
+                    }}
+                    onPaste={nutritionLoading ? undefined : handleCGroupNutritionPaste}
+                    className={`space-y-3 p-4 rounded-lg border-2 transition-all relative ${
                       cGroupFocusedArea === 'nutrition'
                         ? 'border-[#ccff00] bg-[#ccff00]/10'
                         : 'border-white/20 bg-black/20'
-                    } ${isNutritionImageLoading ? 'opacity-50 pointer-events-none' : ''}`}
+                    } ${nutritionLoading ? 'opacity-50' : ''}`}
+                    style={{ pointerEvents: 'auto', zIndex: 20 }}
                   >
                     <h4 className="text-sm font-semibold text-[#ccff00] flex items-center gap-2">
                       <FileText className="w-4 h-4" />
@@ -3085,27 +4505,44 @@ export default function Home() {
                     </h4>
 
                     {/* 성분표 이미지 URL 입력 */}
-                    <div className="space-y-2">
+                    <div className="space-y-2" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 50 }}>
                       <label className="block text-xs text-gray-400">성분표 이미지 URL 입력</label>
-                      <div className="flex gap-2">
+                      <div className="flex gap-2" style={{ pointerEvents: 'auto' }}>
                         <input
                           type="url"
                           value={cGroupNutritionUrlInput}
-                          onChange={(e) => setCGroupNutritionUrlInput(e.target.value)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            setCGroupNutritionUrlInput(e.target.value);
+                          }}
                           onKeyDown={(e) => {
+                            e.stopPropagation();
                             if (e.key === 'Enter') {
                               handleCGroupNutritionUrlAdd();
                             }
                           }}
-                          onFocus={() => setCGroupFocusedArea('nutrition')}
+                          onClick={(e) => e.stopPropagation()}
+                          onFocus={(e) => {
+                            e.stopPropagation();
+                            setCGroupFocusedArea('nutrition');
+                          }}
                           placeholder="https://..."
-                          disabled={isNutritionImageLoading}
+                          disabled={nutritionLoading}
                           className="flex-1 px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-xs focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ pointerEvents: 'auto', position: 'relative', zIndex: 50 }}
                         />
                         <RippleButton
-                          onClick={handleCGroupNutritionUrlAdd}
-                          disabled={!cGroupNutritionUrlInput.trim() || isNutritionImageLoading}
+                          type="button"
+                          onClick={(e) => {
+                            e?.preventDefault();
+                            e?.stopPropagation();
+                            if (!nutritionLoading && cGroupNutritionUrlInput.trim()) {
+                              handleCGroupNutritionUrlAdd();
+                            }
+                          }}
+                          disabled={!cGroupNutritionUrlInput.trim() || nutritionLoading}
                           className="px-3 py-2 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all text-xs flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{ pointerEvents: 'auto', position: 'relative', zIndex: 50 }}
                         >
                           <ArrowRight className="w-3 h-3" />
                           추가
@@ -3121,14 +4558,14 @@ export default function Home() {
                         multiple
                         accept="image/*"
                         onChange={handleCGroupNutritionFileSelect}
-                        disabled={isNutritionImageLoading}
+                        disabled={nutritionLoading}
                         className="hidden"
                         id="c-group-nutrition-input"
                       />
                       <label
                         htmlFor="c-group-nutrition-input"
-                        className={`block ${isNutritionImageLoading ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                        onClick={() => !isNutritionImageLoading && setCGroupFocusedArea('nutrition')}
+                        className={`block ${nutritionLoading ? 'opacity-50' : 'cursor-pointer'}`}
+                        onClick={() => !nutritionLoading && setCGroupFocusedArea('nutrition')}
                       >
                         <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-[#ccff00]/50 transition-all bg-black/20">
                           <FileText className="w-6 h-6 text-gray-400 mx-auto mb-2" />
@@ -3139,7 +4576,7 @@ export default function Home() {
 
                       {/* 성분표 썸네일 */}
                       {cGroupNutritionImages.length > 0 && (
-                        <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div className="grid grid-cols-2 gap-2 mt-2 relative z-10">
                           {cGroupNutritionImages.map((img, idx) => (
                             <div key={idx} className="relative w-full h-20 bg-black/20 rounded-lg overflow-hidden group">
                       <img
@@ -3155,6 +4592,103 @@ export default function Home() {
                               </button>
                             </div>
                           ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 구역 C: 상품 정보 분석 (오른쪽) */}
+                  <div
+                    className={`space-y-3 p-4 rounded-lg border-2 transition-all relative ${
+                      'border-white/20 bg-black/20'
+                    }`}
+                    style={{ pointerEvents: 'auto', zIndex: 20 }}
+                  >
+                    <h4 className="text-sm font-semibold text-[#ccff00] flex items-center gap-2">
+                      <Package className="w-4 h-4" />
+                      상품 정보 분석
+                    </h4>
+
+                    {/* 상품 정보 이미지 붙여넣기 영역 */}
+                    <div className="space-y-2" style={{ pointerEvents: 'auto', position: 'relative', zIndex: 100 }}>
+                      <input
+                        ref={productInfoFileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          
+                          const reader = new FileReader();
+                          reader.onload = (event) => {
+                            const dataUrl = event.target?.result as string;
+                            setProductInfoImage(dataUrl);
+                          };
+                          reader.readAsDataURL(file);
+                        }}
+                        disabled={productInfoLoading}
+                        className="hidden"
+                        id="product-info-input"
+                      />
+                      <label
+                        htmlFor="product-info-input"
+                        className={`block ${productInfoLoading ? 'opacity-50' : 'cursor-pointer'}`}
+                        style={{ pointerEvents: productInfoLoading ? 'none' : 'auto' }}
+                      >
+                        <div className="border-2 border-dashed border-white/20 rounded-lg p-6 text-center hover:border-[#ccff00]/50 transition-all bg-black/20">
+                          <Upload className="w-6 h-6 text-gray-400 mx-auto mb-2" />
+                          <p className="text-gray-400 text-xs">또는 여기를 클릭 후</p>
+                          <p className="text-[#ccff00] text-xs font-semibold mt-1">Ctrl+V (상품정보)</p>
+                        </div>
+                      </label>
+
+                      {/* 붙여넣기 핸들러 */}
+                      <div
+                        onPaste={async (e) => {
+                          if (productInfoLoading) return;
+                          const items = e.clipboardData.items;
+                          for (let i = 0; i < items.length; i++) {
+                            if (items[i].type.indexOf('image') !== -1) {
+                              const blob = items[i].getAsFile();
+                              if (blob) {
+                                const reader = new FileReader();
+                                reader.onload = (event) => {
+                                  const dataUrl = event.target?.result as string;
+                                  setProductInfoImage(dataUrl);
+                                };
+                                reader.readAsDataURL(blob);
+                              }
+                              break;
+                            }
+                          }
+                        }}
+                        className="min-h-[100px]"
+                      />
+
+                      {/* 업로드된 이미지 미리보기 */}
+                      {productInfoImage && (
+                        <div className="grid grid-cols-1 gap-2 mt-2 relative z-10">
+                          <div className="relative w-full h-20 bg-black/20 rounded-lg overflow-hidden group">
+                            <img
+                              src={productInfoImage}
+                              alt="Product info"
+                              className="w-full h-full object-contain"
+                            />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setProductInfoImage('');
+                                if (productInfoFileInputRef.current) {
+                                  productInfoFileInputRef.current.value = '';
+                                }
+                              }}
+                              className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity z-30"
+                            >
+                              <X className="w-3 h-3 text-white" />
+                            </button>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -3183,13 +4717,51 @@ export default function Home() {
                     }}
                     placeholder="https://www.coupang.com/vp/products/..."
                     className="w-full px-4 py-3 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                    style={{ pointerEvents: 'auto', position: 'relative', zIndex: 100 }}
                   />
                 </div>
 
                 {/* 분석 시작 버튼 */}
                 <RippleButton
-                  onClick={() => runCAnalysis(apiKey)}
-                  disabled={(cGroupProductImages.length === 0 && cGroupNutritionImages.length === 0) || isCAnalyzing || isProductImageLoading || isNutritionImageLoading}
+                  onClick={async () => {
+                    // 상품 정보 분석 이미지가 있으면 먼저 분석
+                    let extractedReviewCount = '';
+                    let extractedName = '';
+                    
+                    if (productInfoImage && apiKey) {
+                      try {
+                        const res = await fetch('/api/analyze-product-info', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({
+                            imageDataUrl: productInfoImage,
+                            apiKey,
+                          }),
+                        });
+
+                        if (res.ok) {
+                          const data = await res.json();
+                          extractedName = data.name || '';
+                          extractedReviewCount = data.reviewCount || '';
+                        }
+                      } catch (error) {
+                        console.error('Failed to analyze product info:', error);
+                      }
+                    }
+
+                    // 메인 분석 실행
+                    await runCAnalysis(apiKey);
+                    
+                    // 상품 정보 분석 결과를 formData에 반영
+                    if (extractedName || extractedReviewCount) {
+                      setCGroupFormData((prev) => ({
+                        ...prev,
+                        name: extractedName || prev.name,
+                        reviewCount: extractedReviewCount || prev.reviewCount,
+                      }));
+                    }
+                  }}
+                  disabled={(cGroupProductImages.length === 0 && cGroupNutritionImages.length === 0) || isCAnalyzing || productLoading || nutritionLoading}
                   className="w-full mt-4 px-6 py-3 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_20px_rgba(204,255,0,0.5)] hover:shadow-[0_0_30px_rgba(204,255,0,0.7)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isCAnalyzing ? (
@@ -3246,6 +4818,18 @@ export default function Home() {
                           />
                         </div>
 
+                        {/* 리뷰수 (Full Width) */}
+                    <div>
+                          <label className="block text-xs text-gray-400 mb-1">리뷰수</label>
+                          <input
+                            type="text"
+                            value={cGroupFormData.reviewCount || ''}
+                            onChange={(e) => setCGroupFormData({ ...cGroupFormData, reviewCount: e.target.value })}
+                            placeholder="예: 1234"
+                            className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
+                          />
+                        </div>
+
                         {/* 맛 | 용량 | 대분류 | 소분류 */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           <div>
@@ -3287,7 +4871,6 @@ export default function Home() {
                                 <option value="운동보조제" className="bg-gray-900 text-white">운동보조제</option>
                                 <option value="단백질 드링크" className="bg-gray-900 text-white">단백질 드링크</option>
                                 <option value="단백질 간식" className="bg-gray-900 text-white">단백질 간식</option>
-                                <option value="기타 간식" className="bg-gray-900 text-white">기타 간식</option>
                                 <option value="영양제" className="bg-gray-900 text-white">영양제</option>
                                 <option value="닭가슴살" className="bg-gray-900 text-white">닭가슴살</option>
                               </select>
