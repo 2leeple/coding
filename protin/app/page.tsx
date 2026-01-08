@@ -812,6 +812,8 @@ export default function Home() {
     setFocusedArea: setCGroupFocusedArea,
     setFocusedField: setCGroupFocusedField,
     setCurrentNutritionImageIndex,
+    setNutritionHighlights: setCGroupNutritionHighlights,
+    setNutritionImageMeta: setCGroupNutritionImageMeta,
     runAnalysis: runCAnalysis,
     saveToInventory: handleCSaveToA,
     resetAll: resetAllFromContext,
@@ -833,6 +835,7 @@ export default function Home() {
   const [isNutritionImageZoomed, setIsNutritionImageZoomed] = useState(false);
   const [nutritionImageZoom, setNutritionImageZoom] = useState(1);
   const [nutritionImageMagnifier, setNutritionImageMagnifier] = useState({ x: 50, y: 50, isHovering: false });
+  const [isCAnalyzingLocal, setIsCAnalyzingLocal] = useState(false);
   const cGroupProductFileInputRef = useRef<HTMLInputElement>(null);
   const cGroupNutritionFileInputRef = useRef<HTMLInputElement>(null);
   
@@ -1336,7 +1339,7 @@ export default function Home() {
       return;
     }
 
-    setIsCAnalyzing(true);
+    setIsCAnalyzingLocal(true);
     setCGroupNutritionHighlights([]);
 
     // 성분표 이미지가 있으면 좌표 추출 API 호출
@@ -1556,7 +1559,7 @@ export default function Home() {
       console.error('Failed to analyze:', error);
       toast.error('분석 중 오류가 발생했습니다.');
     } finally {
-      setIsCAnalyzing(false);
+      setIsCAnalyzingLocal(false);
     }
   };
 
@@ -4761,10 +4764,10 @@ ${bGroupParserText}`;
                       }));
                     }
                   }}
-                  disabled={(cGroupProductImages.length === 0 && cGroupNutritionImages.length === 0) || isCAnalyzing || productLoading || nutritionLoading}
+                  disabled={(cGroupProductImages.length === 0 && cGroupNutritionImages.length === 0) || isCAnalyzing || isCAnalyzingLocal || productLoading || nutritionLoading}
                   className="w-full mt-4 px-6 py-3 bg-[#ccff00] text-black font-semibold rounded-lg hover:bg-[#b3e600] transition-all shadow-[0_0_20px_rgba(204,255,0,0.5)] hover:shadow-[0_0_30px_rgba(204,255,0,0.7)] flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isCAnalyzing ? (
+                  {(isCAnalyzing || isCAnalyzingLocal) ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
                       분석 중...

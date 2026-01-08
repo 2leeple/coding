@@ -60,6 +60,8 @@ interface AnalysisContextType {
   setFocusedArea: (area: 'product' | 'nutrition' | null) => void;
   setFocusedField: (field: string | null) => void;
   setCurrentNutritionImageIndex: (index: number) => void;
+  setNutritionHighlights: (highlights: NutritionHighlight[]) => void;
+  setNutritionImageMeta: (meta: { width: number; height: number } | null) => void;
   runAnalysis: (apiKey: string) => Promise<void>;
   saveToInventory: (imageUrl: string) => Promise<void>;
   resetAll: () => void;
@@ -677,6 +679,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     setFocusedArea,
     setFocusedField,
     setCurrentNutritionImageIndex,
+    setNutritionHighlights,
+    setNutritionImageMeta,
     runAnalysis,
     saveToInventory,
     resetAll,
