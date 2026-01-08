@@ -867,6 +867,7 @@ export default function Home() {
   const [isBGroupParsing, setIsBGroupParsing] = useState(false);
   const [draggedProduct, setDraggedProduct] = useState<{ brand: string; title: string; flavor?: string; weight?: string } | null>(null);
   const [isBSaving, setIsBSaving] = useState(false);
+  const [bGroupListImages, setBGroupListImages] = useState<string[]>([]);
 
   // 공백 무시 비교 함수 (스마트 필터)
   const normalizeForMatch = (str: string): string => {
