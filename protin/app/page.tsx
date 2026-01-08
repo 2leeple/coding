@@ -868,6 +868,27 @@ export default function Home() {
   const [draggedProduct, setDraggedProduct] = useState<{ brand: string; title: string; flavor?: string; weight?: string } | null>(null);
   const [isBSaving, setIsBSaving] = useState(false);
   const [bGroupListImages, setBGroupListImages] = useState<string[]>([]);
+  const [bGroupListResults, setBGroupListResults] = useState<Array<{
+    brand: string;
+    name: string;
+    flavor?: string;
+    weight_g?: number;
+    weight_kg?: number;
+    is_snack: boolean;
+    bundle_count: number;
+    status: 'NEW' | 'VARIATION' | 'DUPLICATE';
+    variationMessage?: string;
+    link?: string;
+    isLoadingLink?: boolean;
+  }>>([]);
+  const [bGroupListExcluded, setBGroupListExcluded] = useState<Array<{
+    brand: string;
+    name: string;
+    flavor?: string;
+    weight_g?: number;
+    reason: string;
+    type: 'BRAND' | 'BUNDLE' | 'DUPLICATE';
+  }>>([]);
 
   // 공백 무시 비교 함수 (스마트 필터)
   const normalizeForMatch = (str: string): string => {
