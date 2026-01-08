@@ -1,5 +1,6 @@
 'use client';
 
+// Main application page component
 import React, { useState, useEffect, useRef, useMemo, memo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion';
