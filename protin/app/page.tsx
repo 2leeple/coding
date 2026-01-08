@@ -815,6 +815,7 @@ export default function Home() {
     setCurrentNutritionImageIndex,
     setNutritionHighlights: setCGroupNutritionHighlights,
     setNutritionImageMeta: setCGroupNutritionImageMeta,
+    setSaved: setCGroupSaved,
     runAnalysis: runCAnalysis,
     saveToInventory: handleCSaveToA,
     resetAll: resetAllFromContext,

@@ -62,6 +62,7 @@ interface AnalysisContextType {
   setCurrentNutritionImageIndex: (index: number) => void;
   setNutritionHighlights: (highlights: NutritionHighlight[]) => void;
   setNutritionImageMeta: (meta: { width: number; height: number } | null) => void;
+  setSaved: (value: boolean) => void;
   runAnalysis: (apiKey: string) => Promise<void>;
   saveToInventory: (imageUrl: string) => Promise<void>;
   resetAll: () => void;
@@ -681,6 +682,7 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
     setCurrentNutritionImageIndex,
     setNutritionHighlights,
     setNutritionImageMeta,
+    setSaved,
     runAnalysis,
     saveToInventory,
     resetAll,
