@@ -33,6 +33,7 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCcw,
+  Scissors,
 } from 'lucide-react';
 
 type Tab = 'A' | 'B' | 'C';
@@ -54,7 +55,7 @@ type CategorySmall = typeof FILTER_CATEGORIES[CategoryLarge][number];
 const CATEGORY_OPTIONS: Record<string, string[]> = {
   '단백질 보충제': ['WPC', 'WPI', '식물성', '카제인', '게이너', '선식(탄수)', '마이프로틴', '국내(비추)'],
   '운동보조제': ['BCAA', '아르기닌', '크레아틴', '글루타민', '부스터', 'EAA', '아미노산', '전해질', 'HMB', '카르니틴', '기타'],
-  '단백질 드링크': ['RTD(음료)', '팩', '스파클링', '기타'],
+  '단백질 드링크': ['단백질몰빵', '고단백두유', '탄수↑,당↓'],
   '단백질 간식': ['프로틴바', '쿠키', '칩', '젤리/양갱', '기타'],
   '닭가슴살': ['스테이크', '볼', '소세지', '훈제/수비드', '소스포함'],
   '영양제': ['종합비타민', '오메가3', '유산균', 'CLA', '집중·인지', '비타민 D', 'ZMA', '커큐민', '그린스', 'L-테아닌', '마그네슘', '머쉬룸', '마카', '아피제닌', '알파GPC', '초유(콜로스트럼)', '글루코사민', '히알루론산', '레스베라트롤', '기타'],
@@ -76,6 +77,7 @@ interface Product {
   fat?: number;
   sugar?: number;
   imageUrl?: string;
+  link?: string;
   createdAt: string;
 }
 
@@ -929,6 +931,7 @@ export default function Home() {
   const [showToast, setShowToast] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [doubleClickAction, setDoubleClickAction] = useState<'edit' | 'copy'>('edit'); // 더블클릭 동작: 수정 모달 or CSV 복사
   const [selectedCategory, setSelectedCategory] = useState<CategoryLarge | null>(null);
   const [selectedSubCategory, setSelectedSubCategory] = useState<CategorySmall | null>(null);
   const [selectedBrand, setSelectedBrand] = useState<string>('All');
@@ -945,6 +948,10 @@ export default function Home() {
     if (savedViewMode) {
       setViewMode(savedViewMode);
     }
+    const savedDoubleClickAction = localStorage.getItem('double_click_action') as 'edit' | 'copy' | null;
+    if (savedDoubleClickAction) {
+      setDoubleClickAction(savedDoubleClickAction);
+    }
     loadProducts();
   }, []);
 
@@ -959,6 +966,92 @@ export default function Home() {
       setProducts(data);
     } catch (error) {
       console.error('Failed to load products:', error);
+    }
+  };
+
+  // 일괄 배경제거 함수
+  const [isBatchRemovingBg, setIsBatchRemovingBg] = useState(false);
+  const handleBatchRemoveBackground = async () => {
+    // imageUrl이 있는 제품들만 필터링
+    const productsWithImages = products.filter(p => p.imageUrl && p.imageUrl.trim() !== '');
+    
+    if (productsWithImages.length === 0) {
+      toast.error('배경제거할 이미지가 있는 제품이 없습니다.');
+      return;
+    }
+
+    const confirmed = confirm(`총 ${productsWithImages.length}개 제품의 이미지 배경을 제거하시겠습니까?`);
+    if (!confirmed) return;
+
+    setIsBatchRemovingBg(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      const { removeBackground, blobToDataURL } = await import('../utils/imageProcessor');
+      
+      for (const product of productsWithImages) {
+        try {
+          if (!product.imageUrl) continue;
+
+          // 이미지 URL을 Blob으로 변환
+          let imageBlob: Blob;
+          
+          if (product.imageUrl.startsWith('data:')) {
+            const response = await fetch(product.imageUrl);
+            imageBlob = await response.blob();
+          } else if (product.imageUrl.startsWith('blob:')) {
+            const response = await fetch(product.imageUrl);
+            imageBlob = await response.blob();
+          } else {
+            // 외부 URL인 경우 프록시 사용
+            const encodedUrl = encodeURIComponent(product.imageUrl);
+            const response = await fetch(`/api/image-proxy?url=${encodedUrl}`);
+            if (!response.ok) {
+              failCount++;
+              continue;
+            }
+            imageBlob = await response.blob();
+          }
+
+          // 배경 제거
+          const processedBlob = await removeBackground(imageBlob);
+          const processedDataUrl = await blobToDataURL(processedBlob);
+
+          // 제품 업데이트
+          const res = await fetch('/api/products', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: product.id,
+              imageUrl: processedDataUrl,
+            }),
+          });
+
+          if (res.ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (error) {
+          console.error(`Failed to process product ${product.id}:`, error);
+          failCount++;
+        }
+      }
+
+      // 제품 목록 새로고침
+      await loadProducts();
+
+      if (successCount > 0) {
+        toast.success(`${successCount}개 제품의 배경이 제거되었습니다.${failCount > 0 ? ` (실패: ${failCount}개)` : ''}`);
+      } else {
+        toast.error(`배경 제거에 실패했습니다. (실패: ${failCount}개)`);
+      }
+    } catch (error) {
+      console.error('Failed to batch remove background:', error);
+      toast.error('일괄 배경제거 중 오류가 발생했습니다.');
+    } finally {
+      setIsBatchRemovingBg(false);
     }
   };
 
@@ -1561,13 +1654,17 @@ export default function Home() {
         return numValue === 0 ? '0' : numValue.toString();
       };
 
+      // 단백질 드링크 키워드가 이미 감지되어 카테고리가 설정된 경우 유지
+      const isDrinkDetected = cGroupFormData.category === '단백질 드링크' && 
+        ['단백질몰빵', '고단백두유', '탄수↑,당↓'].includes(cGroupFormData.sub_category);
+      
       setCGroupFormData({
         name: extractedData.name || '',
         link: cleanCoupangUrl(cGroupLinkInput), // 정제된 URL
         flavor: extractedData.flavor || '',
         amount: extractedData.amount || '',
-        category: '단백질 보충제', // 대분류는 항상 "단백질 보충제"로 고정
-        sub_category: mapSubCategoryToKorean(extractedData.sub_category || '', extractedData.name || ''),
+        category: isDrinkDetected ? '단백질 드링크' : '단백질 보충제', // 드링크 감지 시 유지, 아니면 기본값
+        sub_category: isDrinkDetected ? cGroupFormData.sub_category : mapSubCategoryToKorean(extractedData.sub_category || '', extractedData.name || ''),
         protein: formatNumericValue(extractedData.protein),
         scoops: formatNumericValue(extractedData.scoops),
         sugar: formatNumericValue(extractedData.sugar),
@@ -1609,6 +1706,121 @@ export default function Home() {
     } catch (error) {
       console.error('Failed to save to A group:', error);
       toast.error('저장 중 오류가 발생했습니다.');
+    }
+  };
+
+  // A탭 엑셀용 복사 (현재 보이는 상품들 일괄 복사)
+  const copyATabToExcel = async () => {
+    // 현재 필터링된 상품들 가져오기
+    const filteredProducts = products.filter((product) => {
+      // 대분류 필터
+      if (selectedCategory) {
+        const normalizedCategoryName = normalizeCategoryName(selectedCategory);
+        const productCategory = (product.category_large || '').trim();
+        if (productCategory !== normalizedCategoryName) {
+          return false;
+        }
+      }
+
+      // 소분류 필터
+      if (selectedSubCategory && selectedSubCategory !== '전체') {
+        const productSubCategory = (product.category_small || '').trim();
+        if (productSubCategory !== selectedSubCategory.trim()) {
+          return false;
+        }
+      }
+
+      // 브랜드 필터
+      if (selectedBrand !== 'All') {
+        const productBrand = (product.brand || '').trim();
+        if (productBrand !== selectedBrand) {
+          return false;
+        }
+      }
+
+      // 맛 필터
+      if (selectedFlavor !== 'All') {
+        const productFlavor = (product.flavor || '').trim();
+        if (productFlavor !== selectedFlavor) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (filteredProducts.length === 0) {
+      toast.error('복사할 상품이 없습니다.');
+      return;
+    }
+
+    // 대분류 변환 함수
+    const convertCategory = (category: string): string => {
+      if (category === '단백질 보충제') return '보충제';
+      if (category === '운동보조제') return '보조제';
+      if (category === '단백질 드링크') return '드링크';
+      if (category === '단백질 간식') return '간식';
+      return category || '';
+    };
+
+    // serving에서 gram 추출 (예: "30g" -> "30")
+    const extractGram = (serving: string | undefined): string => {
+      if (!serving) return '';
+      const match = serving.match(/(\d+(?:\.\d+)?)g/);
+      return match ? match[1] : '';
+    };
+
+    // 각 상품을 엑셀 형식으로 변환
+    const rows = filteredProducts.map((product) => {
+      const fields = [
+        product.name || '',           // 제품명
+        product.link || '',           // 쿠팡링크
+        product.flavor || '',         // 맛
+        product.weight || '',         // 용량
+        convertCategory(product.category_large || ''), // 대카테고리 (변환된 값)
+        product.category_small || '', // 소카테고리
+        product.protein?.toString() || '', // 단백질
+        product.serving || '',        // 총 서빙
+        product.sugar?.toString() || '', // 당류
+        product.fat?.toString() || '', // 지방
+        product.calories?.toString() || '', // 칼로리
+        extractGram(product.serving), // 1회당 용량 (gram)
+        product.carbs?.toString() || '', // 총 탄수
+        '',                           // 총 리뷰수 (A탭에는 없음)
+      ];
+      return fields.join('\t');
+    });
+
+    const tabSeparated = rows.join('\n');
+
+    try {
+      // Modern Clipboard API 사용
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(tabSeparated);
+        toast.success(`총 ${filteredProducts.length}개 상품이 엑셀 형식으로 복사되었습니다!`);
+      } else {
+        // Fallback: 예전 방식
+        const textArea = document.createElement('textarea');
+        textArea.value = tabSeparated;
+        textArea.style.position = 'fixed';
+        textArea.style.left = '-999999px';
+        textArea.style.top = '-999999px';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textArea);
+        
+        if (successful) {
+          toast.success(`총 ${filteredProducts.length}개 상품이 엑셀 형식으로 복사되었습니다!`);
+        } else {
+          toast.error('클립보드 복사에 실패했습니다. 텍스트를 수동으로 복사해주세요.');
+        }
+      }
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      toast.error('클립보드 복사에 실패했습니다. 텍스트를 수동으로 복사해주세요.');
     }
   };
 
@@ -3262,9 +3474,79 @@ ${bGroupParserText}`;
     }
   };
 
-  const handleProductDoubleClick = (product: Product) => {
-    setEditingProduct(product);
-    setIsEditModalOpen(true);
+  // 제품 더블클릭 처리 (스위치 상태에 따라 수정 모달 또는 CSV 복사)
+  const handleProductDoubleClick = async (product: Product) => {
+    if (doubleClickAction === 'edit') {
+      // 수정 모달 열기
+      setEditingProduct(product);
+      setIsEditModalOpen(true);
+    } else {
+      // CSV 복사
+      // 대분류 변환 함수
+      const convertCategory = (category?: string): string => {
+        if (!category) return '';
+        if (category === '단백질 보충제') return '보충제';
+        if (category === '운동보조제') return '보조제';
+        if (category === '단백질 드링크') return '드링크';
+        if (category === '단백질 간식' || category === '기타 간식') return '간식';
+        return category;
+      };
+
+      // serving에서 gram 추출 (예: "1 scoop (30g)" -> "30")
+      const extractGram = (serving?: string): string => {
+        if (!serving) return '';
+        const match = serving.match(/\((\d+)g\)/);
+        return match ? match[1] : '';
+      };
+
+      const fields = [
+        product.name || '',                                              // 제품명
+        '',                                                              // 쿠팡링크 (제품에는 없음)
+        product.flavor || '',                                            // 맛
+        product.weight || '',                                            // 용량
+        convertCategory(product.category_large),                         // 대카테고리 (변환된 값)
+        product.category_small || '',                                    // 소카테고리
+        product.protein?.toString() || '',                               // 단백질
+        product.serving || '',                                           // 총 서빙
+        product.sugar?.toString() || '',                                 // 당류
+        product.fat?.toString() || '',                                   // 지방
+        product.calories?.toString() || '',                              // 칼로리
+        extractGram(product.serving),                                    // 1회당 용량 (gram)
+        product.carbs?.toString() || '',                                 // 총 탄수
+        '',                                                              // 리뷰수 (제품에는 없음)
+      ];
+
+      const tabSeparated = fields.join('\t');
+
+      try {
+        // Modern Clipboard API 사용 (HTTPS 또는 localhost에서만 작동)
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(tabSeparated);
+          toast.success('제품 정보가 CSV 형식으로 복사되었습니다!');
+        } else {
+          // Fallback for older browsers
+          const textArea = document.createElement('textarea');
+          textArea.value = tabSeparated;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          textArea.style.top = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          try {
+            document.execCommand('copy');
+            toast.success('제품 정보가 CSV 형식으로 복사되었습니다!');
+          } catch (err) {
+            console.error('Failed to copy:', err);
+            toast.error('복사에 실패했습니다.');
+          }
+          document.body.removeChild(textArea);
+        }
+      } catch (error) {
+        console.error('Failed to copy to clipboard:', error);
+        toast.error('복사에 실패했습니다.');
+      }
+    }
   };
 
   const deleteProduct = async (id: string) => {
@@ -3292,10 +3574,11 @@ ${bGroupParserText}`;
   };
 
   // ProductCard 컴포넌트 (React.memo로 최적화)
-  const ProductCard = memo(({ product, onDoubleClick, onDelete }: {
+  const ProductCard = memo(({ product, onDoubleClick, onDelete, doubleClickAction }: {
     product: Product;
     onDoubleClick: (product: Product) => void;
     onDelete: (id: string) => void;
+    doubleClickAction: 'edit' | 'copy';
   }) => {
     return (
       <motion.div
@@ -3304,7 +3587,7 @@ ${bGroupParserText}`;
         whileHover={{ scale: 1.05, y: -5 }}
         onDoubleClick={() => onDoubleClick(product)}
         className="group bg-zinc-900/80 backdrop-blur-xl border border-white/10 rounded-xl p-3 min-h-[280px] h-full hover:border-[#ccff00] hover:shadow-[0_0_20px_rgba(204,255,0,0.3)] transition-all cursor-pointer"
-        title="더블 클릭하여 수정"
+        title={doubleClickAction === 'edit' ? '더블 클릭하여 수정' : '더블 클릭하여 CSV 복사'}
       >
         {product.imageUrl && (
           <div className="relative w-full aspect-square bg-black/20 rounded-lg mb-2 p-1.5 flex items-center justify-center overflow-hidden">
@@ -3690,15 +3973,67 @@ ${bGroupParserText}`;
                 </AnimatePresence>
               </motion.div>
 
-              {/* 뷰 모드 토글 버튼 */}
+              {/* 뷰 모드 토글 버튼 및 일괄 배경제거 */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center justify-end gap-2"
+                className="flex items-center justify-end gap-2 flex-wrap"
               >
+                {/* 더블클릭 동작 스위치 */}
+                <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <span className="text-xs text-gray-400">더블클릭:</span>
+                  <button
+                    onClick={() => {
+                      const newAction = doubleClickAction === 'edit' ? 'copy' : 'edit';
+                      setDoubleClickAction(newAction);
+                      localStorage.setItem('double_click_action', newAction);
+                    }}
+                    className={`relative w-20 h-6 rounded-full transition-all ${
+                      doubleClickAction === 'edit' ? 'bg-[#ccff00]' : 'bg-zinc-700'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                        doubleClickAction === 'edit' ? 'translate-x-0' : 'translate-x-14'
+                      }`}
+                    />
+                    <span className={`absolute top-1 text-[10px] font-medium ${
+                      doubleClickAction === 'edit' ? 'left-2 text-black' : 'right-2 text-white'
+                    }`}>
+                      {doubleClickAction === 'edit' ? '수정' : '복사'}
+                    </span>
+                  </button>
+                </div>
+                <RippleButton
+                  onClick={copyATabToExcel}
+                  className="px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-600/50 rounded-lg text-sm transition-all flex items-center gap-2 text-emerald-400"
+                >
+                  <Copy className="w-4 h-4" />
+                  엑셀용 복사
+                </RippleButton>
+                <RippleButton
+                  onClick={handleBatchRemoveBackground}
+                  disabled={isBatchRemovingBg}
+                  className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-600/50 rounded-lg text-sm transition-all flex items-center gap-2 text-purple-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isBatchRemovingBg ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      배경제거 중...
+                    </>
+                  ) : (
+                    <>
+                      <Scissors className="w-4 h-4" />
+                      배경제거 일괄 처리
+                    </>
+                  )}
+                </RippleButton>
                 <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-lg p-1 flex gap-1">
                   <button
-                    onClick={() => setViewMode('grid')}
+                    onClick={() => {
+                      setViewMode('grid');
+                      localStorage.setItem('view_mode', 'grid');
+                    }}
                     className={`p-2 rounded transition-all ${
                       viewMode === 'grid'
                         ? 'bg-[#ccff00] text-black'
@@ -3708,7 +4043,10 @@ ${bGroupParserText}`;
                     <LayoutGrid className="w-5 h-5" />
                   </button>
                   <button
-                    onClick={() => setViewMode('list')}
+                    onClick={() => {
+                      setViewMode('list');
+                      localStorage.setItem('view_mode', 'list');
+                    }}
                     className={`p-2 rounded transition-all ${
                       viewMode === 'list'
                         ? 'bg-[#ccff00] text-black'
@@ -3831,6 +4169,7 @@ ${bGroupParserText}`;
                             product={product}
                             onDoubleClick={handleProductDoubleClick}
                             onDelete={deleteProduct}
+                            doubleClickAction={doubleClickAction}
                           />
                         )}
                           components={{
@@ -3863,7 +4202,7 @@ ${bGroupParserText}`;
                                   animate={{ opacity: 1 }}
                                   onDoubleClick={() => handleProductDoubleClick(product)}
                                   className="border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer"
-                                  title="더블 클릭하여 수정"
+                                  title={doubleClickAction === 'edit' ? '더블 클릭하여 수정' : '더블 클릭하여 CSV 복사'}
                                 >
                                   <td className="px-4 py-3">
                                     {product.imageUrl ? (
@@ -4770,6 +5109,30 @@ ${bGroupParserText}`;
                           const data = await res.json();
                           extractedName = data.name || '';
                           extractedReviewCount = data.reviewCount || '';
+                          
+                          // RTD 또는 드링크믹스 키워드 확인 (제품명과 전체 텍스트 모두 확인)
+                          const fullText = (data.fullText || '').toUpperCase();
+                          const nameUpper = (extractedName || '').toUpperCase();
+                          const isRTD = nameUpper.includes('RTD') || 
+                                       nameUpper.includes('드링크믹스') ||
+                                       fullText.includes('RTD') ||
+                                       fullText.includes('드링크믹스');
+                          
+                          // 두유 키워드 확인
+                          const isSoyMilk = nameUpper.includes('두유') || 
+                                           nameUpper.includes('SOY') ||
+                                           fullText.includes('두유') ||
+                                           fullText.includes('SOY');
+                          
+                          if (isRTD) {
+                            // 두유가 아니면 기본값 '단백질몰빵', 두유면 '고단백두유'
+                            const subCategory = isSoyMilk ? '고단백두유' : '단백질몰빵';
+                            setCGroupFormData((prev) => ({
+                              ...prev,
+                              category: '단백질 드링크',
+                              sub_category: subCategory,
+                            }));
+                          }
                         }
                       } catch (error) {
                         console.error('Failed to analyze product info:', error);
@@ -4781,10 +5144,24 @@ ${bGroupParserText}`;
                     
                     // 상품 정보 분석 결과를 formData에 반영
                     if (extractedName || extractedReviewCount) {
+                      // RTD 또는 드링크믹스 키워드 확인
+                      const nameUpper = (extractedName || '').toUpperCase();
+                      const isRTD = nameUpper.includes('RTD') || 
+                                   nameUpper.includes('드링크믹스');
+                      
+                      // 두유 키워드 확인
+                      const isSoyMilk = nameUpper.includes('두유') || 
+                                       nameUpper.includes('SOY');
+                      
                       setCGroupFormData((prev) => ({
                         ...prev,
                         name: extractedName || prev.name,
                         reviewCount: extractedReviewCount || prev.reviewCount,
+                        // RTD 키워드가 있으면 카테고리 자동 설정 (두유가 아니면 기본값 '단백질몰빵', 두유면 '고단백두유')
+                        ...(isRTD && {
+                          category: '단백질 드링크',
+                          sub_category: isSoyMilk ? '고단백두유' : '단백질몰빵',
+                        }),
                       }));
                     }
                   }}
@@ -4869,12 +5246,33 @@ ${bGroupParserText}`;
                       />
                     </div>
                     <div>
-                            <label className="block text-xs text-gray-400 mb-1">용량</label>
+                            <label className="block text-xs text-gray-400 mb-1">
+                              {cGroupFormData.category === '단백질 드링크' && ['단백질몰빵', '고단백두유', '탄수↑,당↓'].includes(cGroupFormData.sub_category) 
+                                ? '1팩당 용량' 
+                                : '용량'}
+                            </label>
                       <input
                         type="text"
-                              value={cGroupFormData.amount}
-                              onChange={(e) => setCGroupFormData({ ...cGroupFormData, amount: e.target.value })}
-                              placeholder="예: 2kg"
+                              value={
+                                cGroupFormData.category === '단백질 드링크' && ['단백질몰빵', '고단백두유', '탄수↑,당↓'].includes(cGroupFormData.sub_category)
+                                  ? (cGroupFormData.gram ? `${cGroupFormData.gram}ml` : '')
+                                  : cGroupFormData.amount
+                              }
+                              onChange={(e) => {
+                                if (cGroupFormData.category === '단백질 드링크' && ['단백질몰빵', '고단백두유', '탄수↑,당↓'].includes(cGroupFormData.sub_category)) {
+                                  // RTD 제품: gram 필드 업데이트 (ml 제거)
+                                  const gramValue = e.target.value.replace(/ml/gi, '').trim();
+                                  setCGroupFormData({ ...cGroupFormData, gram: gramValue });
+                                } else {
+                                  // 일반 제품: amount 필드 업데이트
+                                  setCGroupFormData({ ...cGroupFormData, amount: e.target.value });
+                                }
+                              }}
+                              placeholder={
+                                cGroupFormData.category === '단백질 드링크' && ['단백질몰빵', '고단백두유', '탄수↑,당↓'].includes(cGroupFormData.sub_category)
+                                  ? '예: 250ml'
+                                  : '예: 2kg'
+                              }
                               className="w-full px-3 py-2 bg-black/50 backdrop-blur-xl border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#ccff00] focus:ring-2 focus:ring-[#ccff00]/20 transition"
                       />
                     </div>
